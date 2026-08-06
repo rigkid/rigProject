@@ -1,0 +1,19 @@
+{
+  "name": "rigProject",
+  "url": "https://github.com/rigkid/rigProject.git",
+  "ref": "main",
+  "version": "0.1.0",
+  "author": "Rigkid",
+  "license": "MIT Rigkid Contributors",
+  "description": "Project envelope + JSON load/save (.rig / configurable ext).",
+  "dependencies": [
+    {
+      "name": "rigComponent",
+      "url": "https://github.com/rigkid/rigComponent.git",
+      "ref": "main"
+    }
+  ],
+  "include_paths": [
+    "src"
+  ]
+}
