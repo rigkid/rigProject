@@ -18,7 +18,7 @@ jobs:
           RIGKIT_CI_TOKEN: ${{ secrets.RIGKIT_CI_TOKEN }}
         run: |
           if [ -z "$RIGKIT_CI_TOKEN" ]; then
-            echo "::error::Missing secret RIGKIT_CI_TOKEN. Create a fine-grained PAT with Contents:read on rigkid/rigkit and the in-org pack remotes, then set it as an org or repo Actions secret named RIGKIT_CI_TOKEN."
+            echo "::error::Missing secret RIGKIT_CI_TOKEN. Create a fine-grained PAT with Contents:read on rigkid/RigKit and the in-org pack remotes, then set it as an org or repo Actions secret named RIGKIT_CI_TOKEN."
             exit 1
           fi
 
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout RigKit host
         uses: actions/checkout@v4
         with:
-          repository: rigkid/rigkit
+          repository: rigkid/RigKit
           path: host
           submodules: recursive
           token: ${{ secrets.RIGKIT_CI_TOKEN }}
