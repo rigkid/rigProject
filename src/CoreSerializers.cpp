@@ -10,9 +10,17 @@
 #include "CMesh.h"
 #include "CPage.h"
 #include "CPalette.h"
+#include "CArc.h"
+#include "CEllipse.h"
+#include "CLine.h"
+#include "CPolygon.h"
+#include "CRectangle.h"
+#include "CRegularPolygon.h"
 #include "CRelationship.h"
-#include "CShape.h"
+#include "CRing.h"
+#include "CStar.h"
 #include "CTransform.h"
+#include "EntityIdRemap.h"
 #include "ProjectSerializer.h"
 #include "ecs/components/CGuide.h"
 
@@ -29,6 +37,17 @@ glm::vec3 vec3FromJson(const ordered_json& j, const glm::vec3& fallback = {}) {
 		return fallback;
 	}
 	return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>()};
+}
+
+ordered_json vec2ToJson(const glm::vec2& v) {
+	return ordered_json::array({v.x, v.y});
+}
+
+glm::vec2 vec2FromJson(const ordered_json& j, const glm::vec2& fallback = {}) {
+	if (!j.is_array() || j.size() < 2) {
+		return fallback;
+	}
+	return {j[0].get<float>(), j[1].get<float>()};
 }
 
 ordered_json vec4ToJson(const glm::vec4& v) {
@@ -162,63 +181,199 @@ bool deserializeGroup(entt::registry& reg, entt::entity e, const ordered_json&) 
 	return true;
 }
 
-const char* shapeTypeName(ecs::CShape::Type type) {
-	switch (type) {
-	case ecs::CShape::Type::Rectangle:
-		return "Rectangle";
-	case ecs::CShape::Type::Ellipse:
-		return "Ellipse";
-	case ecs::CShape::Type::Line:
-		return "Line";
-	case ecs::CShape::Type::Polygon:
-		return "Polygon";
-	case ecs::CShape::Type::Star:
-		return "Star";
-	}
-	return "Rectangle";
-}
+// Field names below are the Contract's own, so only the component key still has
+// to change when the writer moves to schema ids.
 
-ecs::CShape::Type shapeTypeFromName(const std::string& name) {
-	if (name == "Ellipse") {
-		return ecs::CShape::Type::Ellipse;
-	}
-	if (name == "Line") {
-		return ecs::CShape::Type::Line;
-	}
-	if (name == "Polygon") {
-		return ecs::CShape::Type::Polygon;
-	}
-	if (name == "Star") {
-		return ecs::CShape::Type::Star;
-	}
-	return ecs::CShape::Type::Rectangle;
-}
-
-bool serializeShape(entt::registry& reg, entt::entity e, ordered_json& j) {
-	if (!reg.all_of<ecs::CShape>(e)) {
+bool serializeRectangle(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CRectangle>(e)) {
 		return false;
 	}
-	const auto& s = reg.get<ecs::CShape>(e);
-	j["type"] = shapeTypeName(s.type);
+	const auto& s = reg.get<ecs::CRectangle>(e);
+	j["x"] = s.x;
+	j["y"] = s.y;
+	j["width"] = s.width;
+	j["height"] = s.height;
+	j["cornerRadius"] = s.cornerRadius;
+	return true;
+}
+
+bool deserializeRectangle(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CRectangle s;
+	s.x = j.value("x", s.x);
+	s.y = j.value("y", s.y);
+	s.width = j.value("width", s.width);
+	s.height = j.value("height", s.height);
+	s.cornerRadius = j.value("cornerRadius", s.cornerRadius);
+	reg.emplace_or_replace<ecs::CRectangle>(e, s);
+	return true;
+}
+
+bool serializeEllipse(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CEllipse>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CEllipse>(e);
+	j["cx"] = s.cx;
+	j["cy"] = s.cy;
+	j["rx"] = s.rx;
+	j["ry"] = s.ry;
+	return true;
+}
+
+bool deserializeEllipse(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CEllipse s;
+	s.cx = j.value("cx", s.cx);
+	s.cy = j.value("cy", s.cy);
+	s.rx = j.value("rx", s.rx);
+	s.ry = j.value("ry", s.ry);
+	reg.emplace_or_replace<ecs::CEllipse>(e, s);
+	return true;
+}
+
+bool serializeLine(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CLine>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CLine>(e);
 	j["x1"] = s.x1;
 	j["y1"] = s.y1;
 	j["x2"] = s.x2;
 	j["y2"] = s.y2;
-	j["sides"] = s.sides;
-	j["innerRadius"] = s.innerRadius;
 	return true;
 }
 
-bool deserializeShape(entt::registry& reg, entt::entity e, const ordered_json& j) {
-	ecs::CShape s;
-	s.type = shapeTypeFromName(j.value("type", std::string("Rectangle")));
+bool deserializeLine(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CLine s;
 	s.x1 = j.value("x1", s.x1);
 	s.y1 = j.value("y1", s.y1);
 	s.x2 = j.value("x2", s.x2);
 	s.y2 = j.value("y2", s.y2);
+	reg.emplace_or_replace<ecs::CLine>(e, s);
+	return true;
+}
+
+bool serializePolygon(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CPolygon>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CPolygon>(e);
+	auto points = ordered_json::array();
+	for (const auto& p : s.points) {
+		points.push_back(vec2ToJson(p));
+	}
+	j["points"] = std::move(points);
+	j["closed"] = s.closed;
+	return true;
+}
+
+bool deserializePolygon(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CPolygon s;
+	if (auto it = j.find("points"); it != j.end() && it->is_array()) {
+		s.points.reserve(it->size());
+		for (const auto& p : *it) {
+			s.points.push_back(vec2FromJson(p));
+		}
+	}
+	s.closed = j.value("closed", s.closed);
+	reg.emplace_or_replace<ecs::CPolygon>(e, std::move(s));
+	return true;
+}
+
+bool serializeRegularPolygon(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CRegularPolygon>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CRegularPolygon>(e);
+	j["cx"] = s.cx;
+	j["cy"] = s.cy;
+	j["radius"] = s.radius;
+	j["sides"] = s.sides;
+	j["rotationDegrees"] = s.rotationDegrees;
+	return true;
+}
+
+bool deserializeRegularPolygon(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CRegularPolygon s;
+	s.cx = j.value("cx", s.cx);
+	s.cy = j.value("cy", s.cy);
+	s.radius = j.value("radius", s.radius);
 	s.sides = j.value("sides", s.sides);
+	s.rotationDegrees = j.value("rotationDegrees", s.rotationDegrees);
+	reg.emplace_or_replace<ecs::CRegularPolygon>(e, s);
+	return true;
+}
+
+bool serializeStar(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CStar>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CStar>(e);
+	j["cx"] = s.cx;
+	j["cy"] = s.cy;
+	j["radius"] = s.radius;
+	j["innerRadius"] = s.innerRadius;
+	j["points"] = s.points;
+	j["rotationDegrees"] = s.rotationDegrees;
+	return true;
+}
+
+bool deserializeStar(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CStar s;
+	s.cx = j.value("cx", s.cx);
+	s.cy = j.value("cy", s.cy);
+	s.radius = j.value("radius", s.radius);
 	s.innerRadius = j.value("innerRadius", s.innerRadius);
-	reg.emplace_or_replace<ecs::CShape>(e, s);
+	s.points = j.value("points", s.points);
+	s.rotationDegrees = j.value("rotationDegrees", s.rotationDegrees);
+	reg.emplace_or_replace<ecs::CStar>(e, s);
+	return true;
+}
+
+bool serializeArc(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CArc>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CArc>(e);
+	j["cx"] = s.cx;
+	j["cy"] = s.cy;
+	j["radius"] = s.radius;
+	j["startAngleDegrees"] = s.startAngleDegrees;
+	j["endAngleDegrees"] = s.endAngleDegrees;
+	j["pie"] = s.pie;
+	return true;
+}
+
+bool deserializeArc(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CArc s;
+	s.cx = j.value("cx", s.cx);
+	s.cy = j.value("cy", s.cy);
+	s.radius = j.value("radius", s.radius);
+	s.startAngleDegrees = j.value("startAngleDegrees", s.startAngleDegrees);
+	s.endAngleDegrees = j.value("endAngleDegrees", s.endAngleDegrees);
+	s.pie = j.value("pie", s.pie);
+	reg.emplace_or_replace<ecs::CArc>(e, s);
+	return true;
+}
+
+bool serializeRing(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CRing>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CRing>(e);
+	j["cx"] = s.cx;
+	j["cy"] = s.cy;
+	j["outerRadius"] = s.outerRadius;
+	j["innerRadius"] = s.innerRadius;
+	return true;
+}
+
+bool deserializeRing(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CRing s;
+	s.cx = j.value("cx", s.cx);
+	s.cy = j.value("cy", s.cy);
+	s.outerRadius = j.value("outerRadius", s.outerRadius);
+	s.innerRadius = j.value("innerRadius", s.innerRadius);
+	reg.emplace_or_replace<ecs::CRing>(e, s);
 	return true;
 }
 
@@ -312,7 +467,8 @@ bool serializeCamera(entt::registry& reg, entt::entity e, ordered_json& j) {
 	}
 	const auto& c = reg.get<ecs::CCamera>(e);
 	j["active"] = c.active;
-	j["projection"] = static_cast<int>(c.projection);
+	j["projection"] =
+		(c.projection == ecs::CCamera::Projection::Orthographic) ? "orthographic" : "perspective";
 	j["fovYDegrees"] = c.fovYDegrees;
 	j["orthoHeight"] = c.orthoHeight;
 	j["nearClip"] = c.nearClip;
@@ -324,7 +480,9 @@ bool serializeCamera(entt::registry& reg, entt::entity e, ordered_json& j) {
 bool deserializeCamera(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	ecs::CCamera c;
 	c.active = j.value("active", c.active);
-	c.projection = static_cast<ecs::CCamera::Projection>(j.value("projection", 0));
+	c.projection = (j.value("projection", std::string("perspective")) == "orthographic")
+					   ? ecs::CCamera::Projection::Orthographic
+					   : ecs::CCamera::Projection::Perspective;
 	c.fovYDegrees = j.value("fovYDegrees", c.fovYDegrees);
 	c.orthoHeight = j.value("orthoHeight", c.orthoHeight);
 	c.nearClip = j.value("nearClip", c.nearClip);
@@ -340,8 +498,8 @@ bool serializeLight(entt::registry& reg, entt::entity e, ordered_json& j) {
 	}
 	const auto& l = reg.get<ecs::CLight>(e);
 	j["enabled"] = l.enabled;
-	j["type"] = static_cast<int>(l.type);
-	j["color"] = ordered_json::array({l.colorR, l.colorG, l.colorB});
+	j["type"] = (l.type == ecs::CLight::Type::Point) ? "point" : "directional";
+	j["rgb"] = ordered_json::array({l.colorR, l.colorG, l.colorB});
 	j["intensity"] = l.intensity;
 	j["ambient"] = l.ambient;
 	j["banded"] = l.banded;
@@ -350,19 +508,40 @@ bool serializeLight(entt::registry& reg, entt::entity e, ordered_json& j) {
 }
 
 bool deserializeLight(entt::registry& reg, entt::entity e, const ordered_json& j) {
-	ecs::CLight l;
+	auto& l = reg.get_or_emplace<ecs::CLight>(e);
 	l.enabled = j.value("enabled", l.enabled);
-	l.type = static_cast<ecs::CLight::Type>(j.value("type", 0));
-	if (j.contains("color") && j["color"].is_array() && j["color"].size() >= 3) {
-		l.colorR = j["color"][0].get<float>();
-		l.colorG = j["color"][1].get<float>();
-		l.colorB = j["color"][2].get<float>();
+	l.type = (j.value("type", std::string("directional")) == "point")
+				 ? ecs::CLight::Type::Point
+				 : ecs::CLight::Type::Directional;
+	if (j.contains("rgb") && j["rgb"].is_array() && j["rgb"].size() >= 3) {
+		l.colorR = j["rgb"][0].get<float>();
+		l.colorG = j["rgb"][1].get<float>();
+		l.colorB = j["rgb"][2].get<float>();
 	}
 	l.intensity = j.value("intensity", l.intensity);
 	l.ambient = j.value("ambient", l.ambient);
 	l.banded = j.value("banded", l.banded);
 	l.bands = j.value("bands", l.bands);
-	reg.emplace_or_replace<ecs::CLight>(e, l);
+	return true;
+}
+
+/// Dither is a Kit shading choice with no Contract field, and the light schema
+/// admits no extras, so it travels beside the light rather than inside it.
+bool serializeLightShading(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CLight>(e)) {
+		return false;
+	}
+	const auto& l = reg.get<ecs::CLight>(e);
+	if (!l.dither) {
+		return false;
+	}
+	j["dither"] = l.dither;
+	return true;
+}
+
+bool deserializeLightShading(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	auto& l = reg.get_or_emplace<ecs::CLight>(e);
+	l.dither = j.value("dither", l.dither);
 	return true;
 }
 
@@ -491,42 +670,67 @@ bool serializeDrawStyle(entt::registry& reg, entt::entity e, ordered_json& j) {
 		return false;
 	}
 	const auto& d = reg.get<ecs::CDrawStyle>(e);
-	j["fill"] = ordered_json::array({d.fillR, d.fillG, d.fillB, d.fillA});
-	j["stroke"] = ordered_json::array({d.strokeR, d.strokeG, d.strokeB, d.strokeA});
+	j["fillRgba"] = ordered_json::array({d.fillR, d.fillG, d.fillB, d.fillA});
+	j["strokeRgba"] = ordered_json::array({d.strokeR, d.strokeG, d.strokeB, d.strokeA});
 	j["strokeWidth"] = d.strokeWidth;
 	j["hasFill"] = d.hasFill;
 	j["hasStroke"] = d.hasStroke;
-	j["strokeCap"] = strokeCapName(d.strokeCap);
-	j["strokeJoin"] = strokeJoinName(d.strokeJoin);
-	j["dashPattern"] = d.dashPattern;
-	j["dashOffset"] = d.dashOffset;
 	return true;
 }
 
+// CDrawStyle spans two wire components, so both codecs patch the same struct
+// instead of replacing it — whichever key is read second must not wipe the first.
 bool deserializeDrawStyle(entt::registry& reg, entt::entity e, const ordered_json& j) {
-	ecs::CDrawStyle d;
-	if (j.contains("fill") && j["fill"].is_array() && j["fill"].size() >= 4) {
-		d.fillR = j["fill"][0].get<float>();
-		d.fillG = j["fill"][1].get<float>();
-		d.fillB = j["fill"][2].get<float>();
-		d.fillA = j["fill"][3].get<float>();
+	auto& d = reg.get_or_emplace<ecs::CDrawStyle>(e);
+	if (j.contains("fillRgba") && j["fillRgba"].is_array() && j["fillRgba"].size() >= 4) {
+		d.fillR = j["fillRgba"][0].get<float>();
+		d.fillG = j["fillRgba"][1].get<float>();
+		d.fillB = j["fillRgba"][2].get<float>();
+		d.fillA = j["fillRgba"][3].get<float>();
 	}
-	if (j.contains("stroke") && j["stroke"].is_array() && j["stroke"].size() >= 4) {
-		d.strokeR = j["stroke"][0].get<float>();
-		d.strokeG = j["stroke"][1].get<float>();
-		d.strokeB = j["stroke"][2].get<float>();
-		d.strokeA = j["stroke"][3].get<float>();
+	if (j.contains("strokeRgba") && j["strokeRgba"].is_array() && j["strokeRgba"].size() >= 4) {
+		d.strokeR = j["strokeRgba"][0].get<float>();
+		d.strokeG = j["strokeRgba"][1].get<float>();
+		d.strokeB = j["strokeRgba"][2].get<float>();
+		d.strokeA = j["strokeRgba"][3].get<float>();
 	}
 	d.strokeWidth = j.value("strokeWidth", d.strokeWidth);
 	d.hasFill = j.value("hasFill", d.hasFill);
 	d.hasStroke = j.value("hasStroke", d.hasStroke);
+	return true;
+}
+
+/// Cap, join, and dash have no Contract schema, so they ride a host extension
+/// rather than smuggling extra fields into `rig.paint.fill_stroke`.
+bool serializeStrokeStyle(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CDrawStyle>(e)) {
+		return false;
+	}
+	const auto& d = reg.get<ecs::CDrawStyle>(e);
+	const ecs::CDrawStyle plain;
+	// Silence on defaults — most strokes have nothing to add here, and every
+	// omitted key is bytes off documents that hold thousands of styled entities.
+	if (d.strokeCap == plain.strokeCap && d.strokeJoin == plain.strokeJoin &&
+		d.dashPattern.empty() && d.dashOffset == plain.dashOffset) {
+		return false;
+	}
+	j["strokeCap"] = strokeCapName(d.strokeCap);
+	j["strokeJoin"] = strokeJoinName(d.strokeJoin);
+	if (!d.dashPattern.empty()) {
+		j["dashPattern"] = d.dashPattern;
+		j["dashOffset"] = d.dashOffset;
+	}
+	return true;
+}
+
+bool deserializeStrokeStyle(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	auto& d = reg.get_or_emplace<ecs::CDrawStyle>(e);
 	d.strokeCap = strokeCapFromName(j.value("strokeCap", std::string("Butt")));
 	d.strokeJoin = strokeJoinFromName(j.value("strokeJoin", std::string("Miter")));
 	if (j.contains("dashPattern") && j["dashPattern"].is_array()) {
 		d.dashPattern = j["dashPattern"].get<std::vector<float>>();
 	}
 	d.dashOffset = j.value("dashOffset", d.dashOffset);
-	reg.emplace_or_replace<ecs::CDrawStyle>(e, d);
 	return true;
 }
 
@@ -538,15 +742,17 @@ bool serializeRelationship(entt::registry& reg, entt::entity e, ordered_json& j)
 	if (r.parent == entt::null) {
 		j["parent"] = nullptr;
 	} else {
-		j["parent"] = static_cast<std::uint32_t>(r.parent);
+		j["parent"] = entityIdString(r.parent);
 	}
 	return true;
 }
 
 bool deserializeRelationship(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	ecs::CRelationship r;
-	if (j.contains("parent") && !j["parent"].is_null()) {
-		r.parent = static_cast<entt::entity>(j["parent"].get<std::uint32_t>());
+	// Parks the saved handle here; the load pass remaps it to the live entity
+	// once every id in the document has been seen.
+	if (j.contains("parent") && j["parent"].is_string()) {
+		r.parent = entityIdFromString(j["parent"].get<std::string>());
 	} else {
 		r.parent = entt::null;
 	}
@@ -577,11 +783,12 @@ bool deserializeGuide(entt::registry& reg, entt::entity e, const ordered_json& j
 }
 
 template <typename T>
-void addSerializer(ComponentSerializerRegistry& registry, const char* key,
+void addSerializer(ComponentSerializerRegistry& registry, const char* key, const char* schemaId,
 				   bool (*serializeFn)(entt::registry&, entt::entity, ordered_json&),
 				   bool (*deserializeFn)(entt::registry&, entt::entity, const ordered_json&)) {
 	ComponentSerializer ser;
 	ser.name = key;
+	ser.schemaId = schemaId;
 	ser.hasComponent = [](entt::registry& reg, entt::entity e) { return reg.all_of<T>(e); };
 	ser.forEachEntity = [](entt::registry& reg, std::function<void(entt::entity)> fn) {
 		for (auto entity : reg.view<T>()) {
@@ -596,23 +803,54 @@ void addSerializer(ComponentSerializerRegistry& registry, const char* key,
 } // namespace
 
 void registerCoreSerializers(ComponentSerializerRegistry& registry) {
-	addSerializer<ecs::CPage>(registry, "Page", serializePage, deserializePage);
-	addSerializer<ecs::CTransform>(registry, "Transform", serializeTransform, deserializeTransform);
-	addSerializer<ecs::CSelectable>(registry, "Selectable", serializeSelectable, deserializeSelectable);
-	addSerializer<ecs::CGroup>(registry, "Group", serializeGroup, deserializeGroup);
-	addSerializer<ecs::CShape>(registry, "Shape", serializeShape, deserializeShape);
-	addSerializer<ecs::CMesh>(registry, "Mesh", serializeMesh, deserializeMesh);
-	addSerializer<ecs::CDrawStyle>(registry, "DrawStyle", serializeDrawStyle, deserializeDrawStyle);
-	addSerializer<ecs::CRelationship>(registry, "Relationship", serializeRelationship,
-									  deserializeRelationship);
-	addSerializer<ecs::CGuide>(registry, "Guide", serializeGuide, deserializeGuide);
-	addSerializer<ecs::CCamera>(registry, "Camera", serializeCamera, deserializeCamera);
-	addSerializer<ecs::CLight>(registry, "Light", serializeLight, deserializeLight);
-	addSerializer<ecs::CPalette>(registry, "Palette", serializePalette, deserializePalette);
-	addSerializer<ecs::CIndexedAtlas>(registry, "IndexedAtlas", serializeIndexedAtlas,
-									  deserializeIndexedAtlas);
-	addSerializer<ecs::CFaceSelection>(registry, "FaceSelection", serializeFaceSelection,
-									   deserializeFaceSelection);
+	// Contract schemas where one exists; x.rigkit.* where the concept is ours.
+	addSerializer<ecs::CTransform>(registry, "Transform", "rig.spatial.transform",
+								   serializeTransform, deserializeTransform);
+	addSerializer<ecs::CRelationship>(registry, "Relationship", "rig.spatial.relationship",
+									  serializeRelationship, deserializeRelationship);
+	addSerializer<ecs::CGroup>(registry, "Group", "rig.spatial.group", serializeGroup,
+							   deserializeGroup);
+	addSerializer<ecs::CCamera>(registry, "Camera", "rig.spatial.camera", serializeCamera,
+								deserializeCamera);
+	addSerializer<ecs::CSelectable>(registry, "Selectable", "rig.interact.selectable",
+									serializeSelectable, deserializeSelectable);
+	addSerializer<ecs::CDrawStyle>(registry, "DrawStyle", "rig.paint.fill_stroke",
+								   serializeDrawStyle, deserializeDrawStyle);
+	addSerializer<ecs::CLight>(registry, "Light", "rig.render.light", serializeLight,
+							   deserializeLight);
+	addSerializer<ecs::CDrawStyle>(registry, "StrokeStyle", "x.rigkit.stroke_style",
+								   serializeStrokeStyle, deserializeStrokeStyle);
+	addSerializer<ecs::CLight>(registry, "LightShading", "x.rigkit.light_shading",
+							   serializeLightShading, deserializeLightShading);
+
+	addSerializer<ecs::CRectangle>(registry, "Rectangle", "rig.geometry.rectangle",
+								   serializeRectangle, deserializeRectangle);
+	addSerializer<ecs::CEllipse>(registry, "Ellipse", "rig.geometry.ellipse", serializeEllipse,
+								 deserializeEllipse);
+	addSerializer<ecs::CLine>(registry, "Line", "rig.geometry.line", serializeLine,
+							  deserializeLine);
+	addSerializer<ecs::CPolygon>(registry, "Polygon", "rig.geometry.polygon", serializePolygon,
+								 deserializePolygon);
+	addSerializer<ecs::CRegularPolygon>(registry, "RegularPolygon", "rig.geometry.regular_polygon",
+										serializeRegularPolygon, deserializeRegularPolygon);
+	addSerializer<ecs::CStar>(registry, "Star", "rig.geometry.star", serializeStar,
+							  deserializeStar);
+	addSerializer<ecs::CArc>(registry, "Arc", "rig.geometry.arc", serializeArc, deserializeArc);
+	addSerializer<ecs::CRing>(registry, "Ring", "rig.geometry.ring", serializeRing,
+							  deserializeRing);
+	addSerializer<ecs::CMesh>(registry, "Mesh", "rig.geometry.mesh", serializeMesh,
+							  deserializeMesh);
+
+	// No Contract schema covers these yet, so they travel as host extensions.
+	addSerializer<ecs::CPage>(registry, "Page", "x.rigkit.page", serializePage, deserializePage);
+	addSerializer<ecs::CGuide>(registry, "Guide", "x.rigkit.guide", serializeGuide,
+							   deserializeGuide);
+	addSerializer<ecs::CPalette>(registry, "Palette", "x.rigkit.palette", serializePalette,
+								 deserializePalette);
+	addSerializer<ecs::CIndexedAtlas>(registry, "IndexedAtlas", "x.rigkit.indexed_atlas",
+									  serializeIndexedAtlas, deserializeIndexedAtlas);
+	addSerializer<ecs::CFaceSelection>(registry, "FaceSelection", "x.rigkit.face_selection",
+									   serializeFaceSelection, deserializeFaceSelection);
 }
 
 } // namespace project

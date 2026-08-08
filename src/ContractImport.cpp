@@ -1,0 +1,1016 @@
+#include "ContractImport.h"
+
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <optional>
+#include <sstream>
+#include <unordered_map>
+#include <unordered_set>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <spdlog/spdlog.h>
+
+#include "CArc.h"
+#include "CCamera.h"
+#include "CCode.h"
+#include "CDrawStyle.h"
+#include "CEllipse.h"
+#include "CLight.h"
+#include "CLine.h"
+#include "CMesh.h"
+#include "CPolygon.h"
+#include "CRectangle.h"
+#include "CRegularPolygon.h"
+#include "CRelationship.h"
+#include "CRing.h"
+#include "CSelectable.h"
+#include "CStar.h"
+#include "CTransform.h"
+#include "PrimitiveBounds.h"
+#include "core/json.h"
+#include "ecs/MEcs.h"
+#include "rig/create.h"
+
+namespace rigkit {
+namespace project {
+
+namespace {
+
+using json = nlohmann::json;
+constexpr float kPi = 3.14159265358979323846f;
+constexpr float kTwoPi = 6.28318530717958647692f;
+
+json loadFile(const std::string& path, std::string& error) {
+	std::ifstream in(path);
+	if (!in) {
+		error = "could not open file";
+		return {};
+	}
+	try {
+		json j;
+		in >> j;
+		return j;
+	} catch (const std::exception& e) {
+		error = e.what();
+		return {};
+	}
+}
+
+glm::vec3 vec3From(const json& j, const glm::vec3& fallback = {}) {
+	if (!j.is_array() || j.size() < 3) {
+		return fallback;
+	}
+	return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>()};
+}
+
+glm::quat quatFrom(const json& j) {
+	if (!j.is_array() || j.size() < 4) {
+		return glm::quat(1.f, 0.f, 0.f, 0.f);
+	}
+	// Contract: x,y,z,w — glm ctor: w,x,y,z
+	return glm::normalize(
+		glm::quat(j[3].get<float>(), j[0].get<float>(), j[1].get<float>(), j[2].get<float>()));
+}
+
+rigkit::ecs::CDrawStyle styleFrom(const json& comps) {
+	rigkit::ecs::CDrawStyle style;
+	style.hasFill = false;
+	style.hasStroke = false;
+	style.strokeWidth = 1.f;
+	if (!comps.contains("rig.paint.fill_stroke")) {
+		return style;
+	}
+	const auto& p = comps["rig.paint.fill_stroke"];
+	const bool hasFillField = p.contains("fillRgba");
+	const bool hasStrokeField = p.contains("strokeRgba");
+	style.hasFill = p.value("hasFill", hasFillField);
+	style.hasStroke = p.value("hasStroke", hasStrokeField);
+	if (hasFillField && p["fillRgba"].is_array() && p["fillRgba"].size() >= 3) {
+		style.fillR = p["fillRgba"][0].get<float>();
+		style.fillG = p["fillRgba"][1].get<float>();
+		style.fillB = p["fillRgba"][2].get<float>();
+		style.fillA = p["fillRgba"].size() > 3 ? p["fillRgba"][3].get<float>() : 1.f;
+	}
+	if (hasStrokeField && p["strokeRgba"].is_array() && p["strokeRgba"].size() >= 3) {
+		style.strokeR = p["strokeRgba"][0].get<float>();
+		style.strokeG = p["strokeRgba"][1].get<float>();
+		style.strokeB = p["strokeRgba"][2].get<float>();
+		style.strokeA = p["strokeRgba"].size() > 3 ? p["strokeRgba"][3].get<float>() : 1.f;
+	}
+	style.strokeWidth = p.value("strokeWidth", 1.f);
+	return style;
+}
+
+void applyTransform(rigkit::ecs::CTransform& t, const json& comps) {
+	if (!comps.contains("rig.spatial.transform")) {
+		return;
+	}
+	const auto& tr = comps["rig.spatial.transform"];
+	if (tr.contains("position")) {
+		t.position = vec3From(tr["position"]);
+	}
+	if (tr.contains("scale")) {
+		t.scale = vec3From(tr["scale"], {1.f, 1.f, 1.f});
+	}
+	if (tr.contains("rotation")) {
+		t.setRotationQuat(quatFrom(tr["rotation"]));
+	}
+}
+
+rigkit::ecs::CMesh meshFromPoints2(const std::vector<glm::vec2>& pts, bool closed) {
+	rigkit::ecs::CMesh mesh;
+	if (pts.size() < 2) {
+		return mesh;
+	}
+	if (!closed || pts.size() < 3) {
+		mesh.mode = rigkit::ecs::CMesh::Mode::LineStrip;
+		for (const auto& p : pts) {
+			mesh.positions.emplace_back(p.x, p.y, 0.f);
+		}
+		return mesh;
+	}
+	// Fan triangulation around centroid for filled stills.
+	mesh.mode = rigkit::ecs::CMesh::Mode::Triangles;
+	glm::vec2 c{0.f, 0.f};
+	for (const auto& p : pts) {
+		c += p;
+	}
+	c /= static_cast<float>(pts.size());
+	const uint32_t center = 0;
+	mesh.positions.emplace_back(c.x, c.y, 0.f);
+	for (const auto& p : pts) {
+		mesh.positions.emplace_back(p.x, p.y, 0.f);
+	}
+	const uint32_t n = static_cast<uint32_t>(pts.size());
+	for (uint32_t i = 0; i < n; ++i) {
+		const uint32_t a = 1 + i;
+		const uint32_t b = 1 + ((i + 1) % n);
+		mesh.indices.push_back(center);
+		mesh.indices.push_back(a);
+		mesh.indices.push_back(b);
+	}
+	return mesh;
+}
+
+rigkit::ecs::CMesh meshFromContract(const json& meshJson) {
+	rigkit::ecs::CMesh mesh;
+	const std::string mode = meshJson.value("mode", "triangles");
+	if (mode == "lines") {
+		mesh.mode = rigkit::ecs::CMesh::Mode::Lines;
+	} else if (mode == "lineStrip") {
+		mesh.mode = rigkit::ecs::CMesh::Mode::LineStrip;
+	} else {
+		mesh.mode = rigkit::ecs::CMesh::Mode::Triangles;
+	}
+
+	const auto& positions = meshJson["positions"];
+	if (positions.is_array() && !positions.empty()) {
+		if (positions[0].is_number()) {
+			for (size_t i = 0; i + 2 < positions.size(); i += 3) {
+				mesh.positions.emplace_back(positions[i].get<float>(), positions[i + 1].get<float>(),
+											positions[i + 2].get<float>());
+			}
+		} else {
+			for (const auto& v : positions) {
+				mesh.positions.push_back(vec3From(v));
+			}
+		}
+	}
+	if (meshJson.contains("indices") && meshJson["indices"].is_array()) {
+		for (const auto& i : meshJson["indices"]) {
+			mesh.indices.push_back(i.get<uint32_t>());
+		}
+	}
+	if (meshJson.contains("faceColors") && meshJson["faceColors"].is_array()) {
+		for (const auto& c : meshJson["faceColors"]) {
+			if (c.is_array() && c.size() >= 3) {
+				mesh.faceColors.emplace_back(c[0].get<float>(), c[1].get<float>(), c[2].get<float>(),
+											 c.size() > 3 ? c[3].get<float>() : 1.f);
+			}
+		}
+	}
+	return mesh;
+}
+
+const std::unordered_set<std::string> kKnown = {
+	"rig.meta.named",
+	"rig.spatial.transform",
+	"rig.spatial.relationship",
+	"rig.spatial.camera",
+	"rig.spatial.group",
+	"rig.spatial.layer",
+	"rig.render.visibility",
+	"rig.interact.selectable",
+	"rig.paint.fill_stroke",
+	"rig.geometry.rectangle",
+	"rig.geometry.ellipse",
+	"rig.geometry.line",
+	"rig.geometry.polygon",
+	"rig.geometry.regular_polygon",
+	"rig.geometry.star",
+	"rig.geometry.arc",
+	"rig.geometry.ring",
+	"rig.geometry.path",
+	"rig.geometry.mesh",
+	"rig.mod.lfo",
+	"rig.mod.binding",
+	"rig.paint.solid",
+	"rig.ui.panel",
+	"rig.ui.group",
+	"rig.ui.control",
+	"rig.ui.action",
+	"rig.render.material",
+	"rig.render.light",
+	"rig.media.code",
+};
+
+/// Any geometry schema at all — the paint-only fallback must not fire when the
+/// entity already carries something drawable.
+bool hasGeometry(const json& comps) {
+	for (const auto& key : kKnown) {
+		if (key.rfind("rig.geometry.", 0) == 0 && comps.contains(key)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
+	const float len = glm::length(transform.position);
+	if (len < 1e-4f) {
+		return;
+	}
+	const glm::vec3 zAxis = transform.position / len;
+	glm::vec3 up(0.f, 1.f, 0.f);
+	if (std::fabs(glm::dot(zAxis, up)) > 0.95f) {
+		up = glm::vec3(1.f, 0.f, 0.f);
+	}
+	const glm::vec3 xAxis = glm::normalize(glm::cross(up, zAxis));
+	const glm::vec3 yAxis = glm::cross(zAxis, xAxis);
+	transform.rotation = glm::normalize(glm::quat_cast(glm::mat3(xAxis, yAxis, zAxis)));
+}
+
+void applyMaterialAlbedo(rigkit::ecs::CDrawStyle& style, const json& comps) {
+	if (!comps.contains("rig.render.material")) {
+		return;
+	}
+	const auto& m = comps["rig.render.material"];
+	if (!m.contains("albedoRgb") || !m["albedoRgb"].is_array() || m["albedoRgb"].size() < 3) {
+		return;
+	}
+	style.hasFill = true;
+	style.fillR = m["albedoRgb"][0].get<float>();
+	style.fillG = m["albedoRgb"][1].get<float>();
+	style.fillB = m["albedoRgb"][2].get<float>();
+	style.fillA = 1.f;
+	if (m.contains("emissive") && m["emissive"].is_array() && m["emissive"].size() >= 3) {
+		style.fillR = std::min(1.f, style.fillR + m["emissive"][0].get<float>());
+		style.fillG = std::min(1.f, style.fillG + m["emissive"][1].get<float>());
+		style.fillB = std::min(1.f, style.fillB + m["emissive"][2].get<float>());
+	}
+	style.hasStroke = false;
+}
+
+void syncPaintStyle(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& id,
+					float brightness = 1.f) {
+	auto pit = std::find_if(doc.paints.begin(), doc.paints.end(),
+							[&](const ContractImportResult::Paint& p) { return p.id == id; });
+	if (pit == doc.paints.end()) {
+		return;
+	}
+	auto eit = doc.entities.find(id);
+	if (eit == doc.entities.end() || !ecs.hasComponent<rigkit::ecs::CDrawStyle>(eit->second)) {
+		return;
+	}
+	auto& style = ecs.getComponent<rigkit::ecs::CDrawStyle>(eit->second);
+	style.hasFill = true;
+	style.fillR = pit->rgba[0] * brightness;
+	style.fillG = pit->rgba[1] * brightness;
+	style.fillB = pit->rgba[2] * brightness;
+	style.fillA = pit->rgba[3];
+}
+
+} // namespace
+
+ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& jsonText,
+										const std::string& sourceLabel) {
+	ContractImportResult result;
+	json root;
+	try {
+		root = json::parse(jsonText);
+	} catch (const std::exception& e) {
+		result.error = e.what();
+		return result;
+	}
+
+	if (!root.contains("rig")) {
+		result.error = "missing required \"rig\" version field";
+		return result;
+	}
+
+	ecs.clear();
+	result.title = root.value("document", json::object()).value("title", sourceLabel.empty() ? "Rig document" : sourceLabel);
+
+	if (!root.contains("entities") || !root["entities"].is_array()) {
+		result.ok = true;
+		return result;
+	}
+
+	std::unordered_map<std::string, entt::entity> idMap;
+	std::vector<std::pair<entt::entity, std::string>> pendingParents;
+
+	for (const auto& ent : root["entities"]) {
+		const std::string id = ent.value("id", "");
+		const json comps = ent.value("components", json::object());
+
+		for (auto it = comps.begin(); it != comps.end(); ++it) {
+			if (!kKnown.count(it.key())) {
+				result.skipped.push_back(it.key());
+			}
+		}
+
+		if (comps.contains("rig.render.visibility") &&
+			comps["rig.render.visibility"].value("visible", true) == false) {
+			continue;
+		}
+
+		std::string name = id;
+		if (comps.contains("rig.meta.named")) {
+			name = comps["rig.meta.named"].value("name", id);
+		}
+
+		auto entity = ecs.createEntity(name);
+		if (!id.empty()) {
+			idMap[id] = entity;
+			result.entities[id] = entity;
+		}
+		++result.entityCount;
+
+		if (comps.contains("rig.mod.lfo")) {
+			const auto& lfo = comps["rig.mod.lfo"];
+			ContractImportResult::Lfo row;
+			row.id = id;
+			row.waveform = lfo.value("waveform", "sine");
+			row.frequency = lfo.value("frequency", 0.f);
+			row.amplitude = lfo.value("amplitude", 1.f);
+			row.offset = lfo.value("offset", 0.f);
+			row.phase = lfo.value("phase", 0.f);
+			result.lfos.push_back(row);
+		}
+		if (comps.contains("rig.mod.binding")) {
+			const auto& b = comps["rig.mod.binding"];
+			ContractImportResult::Binding row;
+			row.id = id;
+			row.source = b.value("source", "");
+			row.target = b.value("target", "");
+			row.propertyKey = b.value("propertyKey", "");
+			row.depth = b.value("depth", 1.f);
+			row.additive = b.value("additive", false);
+			if (b.contains("min")) {
+				row.hasMin = true;
+				row.min = b["min"].get<float>();
+			}
+			if (b.contains("max")) {
+				row.hasMax = true;
+				row.max = b["max"].get<float>();
+			}
+			result.bindings.push_back(row);
+		}
+
+		if (comps.contains("rig.paint.solid")) {
+			const auto& solid = comps["rig.paint.solid"];
+			ContractImportResult::Paint paint;
+			paint.id = id;
+			if (solid.contains("rgba") && solid["rgba"].is_array() && solid["rgba"].size() >= 3) {
+				paint.rgba = {solid["rgba"][0].get<float>(), solid["rgba"][1].get<float>(),
+							  solid["rgba"][2].get<float>(),
+							  solid["rgba"].size() > 3 ? solid["rgba"][3].get<float>() : 1.f};
+			}
+			result.paints.push_back(paint);
+		}
+
+		if (comps.contains("rig.ui.panel")) {
+			const auto& p = comps["rig.ui.panel"];
+			ContractImportResult::Panel panel;
+			panel.id = id;
+			panel.name = name;
+			panel.role = p.value("role", "");
+			panel.order = p.value("order", 0);
+			panel.visible = p.value("visible", true);
+			panel.preferredWidth = p.value("preferredWidth", 320.f);
+			panel.preferredHeight = p.value("preferredHeight", 240.f);
+			result.panels.push_back(panel);
+		}
+		if (comps.contains("rig.ui.group")) {
+			const auto& g = comps["rig.ui.group"];
+			ContractImportResult::Group group;
+			group.id = id;
+			group.name = name;
+			group.panel = g.value("panel", "");
+			if (g.contains("parent") && g["parent"].is_string()) {
+				group.parent = g["parent"].get<std::string>();
+			}
+			group.order = g.value("order", 0);
+			group.orientation = g.value("orientation", "vertical");
+			group.collapsed = g.value("collapsed", false);
+			result.groups.push_back(group);
+		}
+		if (comps.contains("rig.ui.control")) {
+			const auto& c = comps["rig.ui.control"];
+			ContractImportResult::Control ctrl;
+			ctrl.id = id;
+			ctrl.name = name;
+			ctrl.panel = c.value("panel", "");
+			if (c.contains("group") && c["group"].is_string()) {
+				ctrl.group = c["group"].get<std::string>();
+			}
+			ctrl.order = c.value("order", 0);
+			ctrl.target = c.value("target", "");
+			ctrl.propertyKey = c.value("propertyKey", "");
+			ctrl.type = c.value("type", "float");
+			if (c.contains("min")) {
+				ctrl.min = c["min"].get<float>();
+			}
+			if (c.contains("max")) {
+				ctrl.max = c["max"].get<float>();
+			}
+			if (c.contains("step")) {
+				ctrl.step = c["step"].get<float>();
+			}
+			ctrl.enabled = c.value("enabled", true);
+			ctrl.readOnly = c.value("readOnly", false);
+			ctrl.widget = c.value("widget", "auto");
+			if (c.contains("options") && c["options"].is_array()) {
+				for (const auto& opt : c["options"]) {
+					if (opt.is_string()) {
+						ctrl.options.push_back(opt.get<std::string>());
+					}
+				}
+			}
+			result.controls.push_back(ctrl);
+		}
+		if (comps.contains("rig.ui.action")) {
+			const auto& a = comps["rig.ui.action"];
+			ContractImportResult::Action act;
+			act.id = id;
+			act.name = name;
+			act.panel = a.value("panel", "");
+			if (a.contains("group") && a["group"].is_string()) {
+				act.group = a["group"].get<std::string>();
+			}
+			act.order = a.value("order", 0);
+			act.actionId = a.value("actionId", "");
+			act.enabled = a.value("enabled", true);
+			result.actions.push_back(act);
+		}
+
+		rigkit::ecs::CTransform transform;
+		applyTransform(transform, comps);
+		ecs.addComponent(entity, transform);
+
+		if (comps.contains("rig.spatial.relationship")) {
+			const auto parentId = comps["rig.spatial.relationship"].value("parent", "");
+			if (!parentId.empty()) {
+				pendingParents.emplace_back(entity, parentId);
+			}
+		}
+
+		if (comps.contains("rig.interact.selectable")) {
+			rigkit::ecs::CSelectable sel;
+			sel.enabled = comps["rig.interact.selectable"].value("enabled", true);
+			ecs.addComponent(entity, sel);
+		}
+
+		if (comps.contains("rig.spatial.camera")) {
+			const auto& cam = comps["rig.spatial.camera"];
+			rigkit::ecs::CCamera camera;
+			camera.active = cam.value("active", true);
+			const std::string proj = cam.value("projection", "perspective");
+			camera.projection = (proj == "orthographic")
+									? rigkit::ecs::CCamera::Projection::Orthographic
+									: rigkit::ecs::CCamera::Projection::Perspective;
+			camera.fovYDegrees = cam.value("fovYDegrees", 60.f);
+			camera.orthoHeight = cam.value("orthoHeight", 10.f);
+			camera.nearClip = cam.value("nearClip", 0.1f);
+			camera.farClip = cam.value("farClip", 1000.f);
+			camera.aspect = cam.value("aspect", 0.f);
+			ecs.addComponent(entity, camera);
+		}
+
+		if (comps.contains("rig.media.code")) {
+			const auto& code = comps["rig.media.code"];
+			rigkit::ecs::CCode buffer;
+			buffer.name = name;
+			buffer.text = code.value("text", "");
+			buffer.language = code.value("language", "");
+			buffer.readOnly = code.value("readOnly", false);
+			ecs.addComponent(entity, buffer);
+		}
+
+		auto style = styleFrom(comps);
+		applyMaterialAlbedo(style, comps);
+		bool wroteGeometry = false;
+
+		if (comps.contains("rig.render.light")) {
+			const auto& light = comps["rig.render.light"];
+			rigkit::ecs::CLight L;
+			L.enabled = light.value("enabled", true);
+			const std::string type = light.value("type", "directional");
+			L.type = (type == "point") ? rigkit::ecs::CLight::Type::Point
+									   : rigkit::ecs::CLight::Type::Directional;
+			if (light.contains("rgb") && light["rgb"].is_array() && light["rgb"].size() >= 3) {
+				L.colorR = light["rgb"][0].get<float>();
+				L.colorG = light["rgb"][1].get<float>();
+				L.colorB = light["rgb"][2].get<float>();
+			}
+			L.intensity = light.value("intensity", 1.f);
+			L.ambient = light.value("ambient", 0.35f);
+			// Contract / web path is smooth shade; Kit default banded is for palette look.
+			L.banded = light.value("banded", false);
+			L.dither = light.value("dither", false);
+			if (L.type == rigkit::ecs::CLight::Type::Directional) {
+				aimDirectionalAtOrigin(transform);
+				ecs.getComponent<rigkit::ecs::CTransform>(entity) = transform;
+			}
+			ecs.addComponent(entity, L);
+		}
+
+		// Paint-only docs: synthesize an LED ellipse so the desktop window isn't blank.
+		if (comps.contains("rig.paint.solid") && !hasGeometry(comps)) {
+			const auto& solid = comps["rig.paint.solid"];
+			rigkit::ecs::CEllipse shape;
+			shape.rx = 80.f;
+			shape.ry = 80.f;
+			ecs.addComponent(entity, shape);
+			if (solid.contains("rgba") && solid["rgba"].is_array() && solid["rgba"].size() >= 3) {
+				style.hasFill = true;
+				style.fillR = solid["rgba"][0].get<float>();
+				style.fillG = solid["rgba"][1].get<float>();
+				style.fillB = solid["rgba"][2].get<float>();
+				style.fillA = solid["rgba"].size() > 3 ? solid["rgba"][3].get<float>() : 1.f;
+				style.hasStroke = false;
+			}
+			if (!comps.contains("rig.spatial.transform")) {
+				transform.position = {320.f + static_cast<float>(result.geometryCount) * 200.f, 280.f,
+									  0.f};
+				ecs.getComponent<rigkit::ecs::CTransform>(entity) = transform;
+			}
+			wroteGeometry = true;
+			result.notes.push_back(id + ": paint.solid presented as LED ellipse");
+		} else if (comps.contains("rig.geometry.rectangle")) {
+			const auto& r = comps["rig.geometry.rectangle"];
+			rigkit::ecs::CRectangle shape;
+			shape.x = r.value("x", 0.f);
+			shape.y = r.value("y", 0.f);
+			shape.width = r.value("width", 0.f);
+			shape.height = r.value("height", 0.f);
+			shape.cornerRadius = r.value("cornerRadius", 0.f);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.ellipse")) {
+			const auto& el = comps["rig.geometry.ellipse"];
+			rigkit::ecs::CEllipse shape;
+			shape.cx = el.value("cx", 0.f);
+			shape.cy = el.value("cy", 0.f);
+			shape.rx = el.value("rx", 0.f);
+			shape.ry = el.value("ry", 0.f);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.line")) {
+			const auto& ln = comps["rig.geometry.line"];
+			rigkit::ecs::CLine shape;
+			shape.x1 = ln.value("x1", 0.f);
+			shape.y1 = ln.value("y1", 0.f);
+			shape.x2 = ln.value("x2", 0.f);
+			shape.y2 = ln.value("y2", 0.f);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.regular_polygon")) {
+			const auto& ngon = comps["rig.geometry.regular_polygon"];
+			rigkit::ecs::CRegularPolygon shape;
+			shape.cx = ngon.value("cx", 0.f);
+			shape.cy = ngon.value("cy", 0.f);
+			shape.radius = ngon.value("radius", 1.f);
+			shape.sides = ngon.value("sides", 3);
+			shape.rotationDegrees = ngon.value("rotationDegrees", 0.f);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.star")) {
+			const auto& star = comps["rig.geometry.star"];
+			rigkit::ecs::CStar shape;
+			shape.cx = star.value("cx", 0.f);
+			shape.cy = star.value("cy", 0.f);
+			shape.radius = star.value("radius", 1.f);
+			shape.innerRadius = star.value("innerRadius", shape.radius * 0.5f);
+			shape.points = star.value("points", 5);
+			shape.rotationDegrees = star.value("rotationDegrees", 0.f);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.polygon")) {
+			const auto& poly = comps["rig.geometry.polygon"];
+			rigkit::ecs::CPolygon shape;
+			if (poly.contains("points") && poly["points"].is_array()) {
+				for (const auto& p : poly["points"]) {
+					if (p.is_array() && p.size() >= 2) {
+						shape.points.emplace_back(p[0].get<float>(), p[1].get<float>());
+					}
+				}
+			}
+			shape.closed = poly.value("closed", true);
+			ecs.addComponent(entity, std::move(shape));
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.arc")) {
+			const auto& arc = comps["rig.geometry.arc"];
+			rigkit::ecs::CArc shape;
+			shape.cx = arc.value("cx", 0.f);
+			shape.cy = arc.value("cy", 0.f);
+			shape.radius = arc.value("radius", 1.f);
+			shape.startAngleDegrees = arc.value("startAngleDegrees", 0.f);
+			shape.endAngleDegrees = arc.value("endAngleDegrees", 90.f);
+			shape.pie = arc.value("pie", false);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.ring")) {
+			const auto& ring = comps["rig.geometry.ring"];
+			rigkit::ecs::CRing shape;
+			shape.cx = ring.value("cx", 0.f);
+			shape.cy = ring.value("cy", 0.f);
+			shape.outerRadius = ring.value("outerRadius", 1.f);
+			shape.innerRadius = ring.value("innerRadius", 0.5f);
+			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.path")) {
+			const auto& path = comps["rig.geometry.path"];
+			std::vector<glm::vec2> pts;
+			float cx = 0.f;
+			float cy = 0.f;
+			bool closed = false;
+			if (path.contains("commands") && path["commands"].is_array()) {
+				for (const auto& cmd : path["commands"]) {
+					const std::string type = cmd.value("type", "");
+					if (type == "moveTo" && cmd.contains("p")) {
+						cx = cmd["p"][0].get<float>();
+						cy = cmd["p"][1].get<float>();
+						pts.emplace_back(cx, cy);
+					} else if (type == "lineTo" && cmd.contains("p")) {
+						cx = cmd["p"][0].get<float>();
+						cy = cmd["p"][1].get<float>();
+						pts.emplace_back(cx, cy);
+					} else if (type == "cubicTo") {
+						const auto c1 = cmd.value("c1", json::array({cx, cy}));
+						const auto c2 = cmd.value("c2", json::array({cx, cy}));
+						const auto p = cmd.value("p", json::array({cx, cy}));
+						const float x0 = cx;
+						const float y0 = cy;
+						for (int i = 1; i <= 12; ++i) {
+							const float t = static_cast<float>(i) / 12.f;
+							const float u = 1.f - t;
+							const float x = u * u * u * x0 + 3 * u * u * t * c1[0].get<float>() +
+											3 * u * t * t * c2[0].get<float>() +
+											t * t * t * p[0].get<float>();
+							const float y = u * u * u * y0 + 3 * u * u * t * c1[1].get<float>() +
+											3 * u * t * t * c2[1].get<float>() +
+											t * t * t * p[1].get<float>();
+							pts.emplace_back(x, y);
+						}
+						cx = p[0].get<float>();
+						cy = p[1].get<float>();
+					} else if (type == "quadTo") {
+						const auto c1 = cmd.value("c1", json::array({cx, cy}));
+						const auto p = cmd.value("p", json::array({cx, cy}));
+						const float x0 = cx;
+						const float y0 = cy;
+						for (int i = 1; i <= 10; ++i) {
+							const float t = static_cast<float>(i) / 10.f;
+							const float u = 1.f - t;
+							const float x =
+								u * u * x0 + 2 * u * t * c1[0].get<float>() + t * t * p[0].get<float>();
+							const float y =
+								u * u * y0 + 2 * u * t * c1[1].get<float>() + t * t * p[1].get<float>();
+							pts.emplace_back(x, y);
+						}
+						cx = p[0].get<float>();
+						cy = p[1].get<float>();
+					} else if (type == "close") {
+						closed = true;
+					}
+				}
+			}
+			ecs.addComponent(entity, meshFromPoints2(pts, closed));
+			result.notes.push_back(id + ": path tessellated to mesh");
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.mesh")) {
+			ecs.addComponent(entity, meshFromContract(comps["rig.geometry.mesh"]));
+			wroteGeometry = true;
+		}
+
+		if (wroteGeometry) {
+			ecs.addComponent(entity, style);
+			++result.geometryCount;
+		}
+	}
+
+	for (const auto& [entity, parentId] : pendingParents) {
+		auto it = idMap.find(parentId);
+		if (it == idMap.end()) {
+			continue;
+		}
+		rigkit::ecs::CRelationship rel;
+		rel.parent = it->second;
+		ecs.addComponent(entity, rel);
+	}
+
+	// Contract docs often leave camera rotation as identity; host view is local -Z.
+	// Web always lookAt(scene). Aim identity cameras at the imported geometry AABB.
+	{
+		glm::vec3 bmin(0.f);
+		glm::vec3 bmax(0.f);
+		bool any = false;
+		auto expand = [&](const glm::vec3& p) {
+			if (!any) {
+				bmin = bmax = p;
+				any = true;
+				return;
+			}
+			bmin = glm::min(bmin, p);
+			bmax = glm::max(bmax, p);
+		};
+		for (auto entity : ecs.view<rigkit::ecs::CTransform, rigkit::ecs::CMesh>()) {
+			const auto& xf = ecs.getComponent<rigkit::ecs::CTransform>(entity);
+			const auto& mesh = ecs.getComponent<rigkit::ecs::CMesh>(entity);
+			if (mesh.positions.empty()) {
+				expand(xf.position);
+				continue;
+			}
+			for (const auto& p : mesh.positions) {
+				expand(xf.position + glm::vec3(p) * xf.scale);
+			}
+		}
+		for (auto entity : ecs.view<rigkit::ecs::CTransform>()) {
+			const auto bounds = rigkit::ecs::shapeBounds2D(ecs, entity);
+			if (!bounds.valid) {
+				continue;
+			}
+			const auto& xf = ecs.getComponent<rigkit::ecs::CTransform>(entity);
+			expand(xf.position + glm::vec3(bounds.min, 0.f) * xf.scale);
+			expand(xf.position + glm::vec3(bounds.max, 0.f) * xf.scale);
+		}
+		const glm::vec3 center = any ? (bmin + bmax) * 0.5f : glm::vec3(0.f);
+
+		for (auto entity : ecs.view<rigkit::ecs::CTransform, rigkit::ecs::CCamera>()) {
+			auto& cam = ecs.getComponent<rigkit::ecs::CCamera>(entity);
+			if (!cam.active) {
+				continue;
+			}
+			auto& xf = ecs.getComponent<rigkit::ecs::CTransform>(entity);
+			// Near-identity quat (Contract default) → aim at scene like the web viewer.
+			if (std::fabs(xf.rotation.w) < 0.999f) {
+				continue;
+			}
+			glm::vec3 target = center;
+			if (cam.projection == rigkit::ecs::CCamera::Projection::Orthographic) {
+				target = {xf.position.x, xf.position.y, center.z};
+			}
+			if (glm::length(xf.position - target) < 1e-3f) {
+				target = xf.position + glm::vec3(0.f, 0.f, -1.f);
+			}
+			rig::lookAt(xf, xf.position, target);
+			result.notes.push_back("camera aimed at scene (identity rotation → lookAt)");
+		}
+	}
+
+	// Dedupe skipped keys
+	std::sort(result.skipped.begin(), result.skipped.end());
+	result.skipped.erase(std::unique(result.skipped.begin(), result.skipped.end()),
+						 result.skipped.end());
+
+	result.ok = true;
+	spdlog::info("[ContractImport] {} — {} entities, {} geometry (from {})", result.title,
+				 result.entityCount, result.geometryCount,
+				 sourceLabel.empty() ? "memory" : sourceLabel);
+	for (const auto& note : result.notes) {
+		spdlog::info("[ContractImport] note: {}", note);
+	}
+	if (!result.skipped.empty()) {
+		spdlog::info("[ContractImport] skipped {} unknown component key(s)", result.skipped.size());
+	}
+	if (!result.lfos.empty() || !result.bindings.empty()) {
+		spdlog::info("[ContractImport] modulators: {} LFO(s), {} binding(s)", result.lfos.size(),
+					 result.bindings.size());
+	}
+	if (!result.panels.empty()) {
+		spdlog::info("[ContractImport] ui: {} panel(s), {} control(s), {} action(s)",
+					 result.panels.size(), result.controls.size(), result.actions.size());
+	}
+	return result;
+}
+
+namespace {
+
+float sampleLfo(const ContractImportResult::Lfo& lfo, float timeSec) {
+	const float t = timeSec * lfo.frequency + lfo.phase;
+	float frac = t - std::floor(t);
+	if (frac < 0.f) {
+		frac += 1.f;
+	}
+	float w = 0.f;
+	if (lfo.waveform == "tri") {
+		w = 1.f - 4.f * std::fabs(frac - 0.5f);
+	} else if (lfo.waveform == "saw") {
+		w = frac * 2.f - 1.f;
+	} else if (lfo.waveform == "square") {
+		w = frac < 0.5f ? 1.f : -1.f;
+	} else {
+		w = std::sin(frac * kTwoPi);
+	}
+	return lfo.offset + lfo.amplitude * w;
+}
+
+} // namespace
+
+void tickContractModulators(rigkit::MEcs& ecs, ContractImportResult& doc, float timeSec) {
+	std::unordered_map<std::string, float> samples;
+	samples.reserve(doc.lfos.size());
+	for (const auto& lfo : doc.lfos) {
+		samples[lfo.id] = sampleLfo(lfo, timeSec);
+	}
+	for (const auto& b : doc.bindings) {
+		auto sit = samples.find(b.source);
+		if (sit == samples.end()) {
+			continue;
+		}
+		float v = sit->second * b.depth;
+		if (b.hasMin) {
+			v = std::max(b.min, v);
+		}
+		if (b.hasMax) {
+			v = std::min(b.max, v);
+		}
+		auto tit = doc.entities.find(b.target);
+		if (tit == doc.entities.end()) {
+			continue;
+		}
+		const entt::entity target = tit->second;
+		if (!ecs.hasComponent<rigkit::ecs::CTransform>(target)) {
+			continue;
+		}
+		auto& tr = ecs.getComponent<rigkit::ecs::CTransform>(target);
+		if (b.propertyKey == "position.x") {
+			tr.position.x = b.additive ? tr.position.x + v : v;
+		} else if (b.propertyKey == "position.y") {
+			tr.position.y = b.additive ? tr.position.y + v : v;
+		} else if (b.propertyKey == "position.z") {
+			tr.position.z = b.additive ? tr.position.z + v : v;
+		} else if (b.propertyKey == "scale.x") {
+			tr.scale.x = b.additive ? tr.scale.x + v : v;
+		} else if (b.propertyKey == "scale.y") {
+			tr.scale.y = b.additive ? tr.scale.y + v : v;
+		} else if (b.propertyKey == "scale.z") {
+			tr.scale.z = b.additive ? tr.scale.z + v : v;
+		}
+	}
+
+	// Web parity: pulse paint.solid LEDs from the first LFO when there are no transform bindings.
+	if (!doc.paints.empty() && !doc.lfos.empty() && doc.bindings.empty()) {
+		const auto& lfo = doc.lfos.front();
+		const float sample = sampleLfo(lfo, timeSec);
+		const float amp = std::max(0.001f, std::fabs(lfo.amplitude));
+		const float brightness =
+			std::min(1.f, std::max(0.15f, (sample / amp + 1.f) * 0.5f));
+		for (const auto& paint : doc.paints) {
+			syncPaintStyle(ecs, doc, paint.id, brightness);
+		}
+	}
+}
+
+std::optional<float> contractGetFloat(const ContractImportResult& doc, const std::string& entityId,
+									  const std::string& propertyKey) {
+	for (const auto& lfo : doc.lfos) {
+		if (lfo.id != entityId) {
+			continue;
+		}
+		if (propertyKey == "frequency") {
+			return lfo.frequency;
+		}
+		if (propertyKey == "amplitude") {
+			return lfo.amplitude;
+		}
+		if (propertyKey == "offset") {
+			return lfo.offset;
+		}
+		if (propertyKey == "phase") {
+			return lfo.phase;
+		}
+	}
+	auto eit = doc.entities.find(entityId);
+	if (eit == doc.entities.end()) {
+		return std::nullopt;
+	}
+	return std::nullopt;
+}
+
+std::optional<std::string> contractGetString(const ContractImportResult& doc,
+											 const std::string& entityId,
+											 const std::string& propertyKey) {
+	for (const auto& lfo : doc.lfos) {
+		if (lfo.id == entityId && propertyKey == "waveform") {
+			return lfo.waveform;
+		}
+	}
+	return std::nullopt;
+}
+
+std::optional<std::array<float, 4>> contractGetRgba(const ContractImportResult& doc,
+													const std::string& entityId,
+													const std::string& propertyKey) {
+	if (propertyKey != "rgba") {
+		return std::nullopt;
+	}
+	for (const auto& paint : doc.paints) {
+		if (paint.id == entityId) {
+			return paint.rgba;
+		}
+	}
+	return std::nullopt;
+}
+
+bool contractSetFloat(ContractImportResult& doc, rigkit::MEcs& ecs, const std::string& entityId,
+					  const std::string& propertyKey, float value) {
+	(void)ecs;
+	for (auto& lfo : doc.lfos) {
+		if (lfo.id != entityId) {
+			continue;
+		}
+		if (propertyKey == "frequency") {
+			lfo.frequency = value;
+			return true;
+		}
+		if (propertyKey == "amplitude") {
+			lfo.amplitude = value;
+			return true;
+		}
+		if (propertyKey == "offset") {
+			lfo.offset = value;
+			return true;
+		}
+		if (propertyKey == "phase") {
+			lfo.phase = value;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool contractSetString(ContractImportResult& doc, const std::string& entityId,
+					   const std::string& propertyKey, const std::string& value) {
+	for (auto& lfo : doc.lfos) {
+		if (lfo.id == entityId && propertyKey == "waveform") {
+			lfo.waveform = value;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool contractSetRgba(ContractImportResult& doc, rigkit::MEcs& ecs, const std::string& entityId,
+					 const std::string& propertyKey, const std::array<float, 4>& rgba) {
+	if (propertyKey != "rgba") {
+		return false;
+	}
+	for (auto& paint : doc.paints) {
+		if (paint.id != entityId) {
+			continue;
+		}
+		paint.rgba = rgba;
+		syncPaintStyle(ecs, doc, entityId, 1.f);
+		return true;
+	}
+	return false;
+}
+
+bool contractRunAction(ContractImportResult& doc, const std::string& actionId, float timeSec) {
+	if (actionId == "lfo.resetPhase") {
+		for (auto& lfo : doc.lfos) {
+			lfo.phase = -(timeSec * lfo.frequency);
+		}
+		return true;
+	}
+	return false;
+}
+
+ContractImportResult importContractFile(rigkit::MEcs& ecs, const std::string& path) {
+	ContractImportResult result;
+	std::string error;
+	json root = loadFile(path, error);
+	if (!error.empty() || root.is_null() || root.empty()) {
+		result.error = error.empty() ? "empty or invalid JSON" : error;
+		return result;
+	}
+	return importContractJson(ecs, root.dump(), path);
+}
+
+} // namespace project
+} // namespace rigkit
+

@@ -2,6 +2,7 @@
 
 #include <string>
 #include "ComponentSerializerRegistry.h"
+#include "ContractImport.h"
 #include "ProjectSerializer.h"
 #include "core/pack/IPack.h"
 

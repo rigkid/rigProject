@@ -145,7 +145,7 @@ void DocumentApp::setup() {
 		return;
 	}
 
-	m_docPath = m_document->documentPath(AppPaths::getDataDir() + "/show");
+	m_docPath = m_document->documentPath(AppPaths::joinPath(AppPaths::getDataDir(), "show"));
 	buildScene();
 	m_document->requestSave(m_docPath);
 	m_phase = 0;

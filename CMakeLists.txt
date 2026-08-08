@@ -25,6 +25,8 @@ add_library(${PACK_NAME} STATIC
 	src/ProjectJson.h
 	src/CProject.h
 	src/CPage.h
+	src/ContractImport.cpp
+	src/ContractImport.h
 )
 target_link_libraries(${PACK_NAME} PUBLIC rigkit)
 if(TARGET rigComponent)

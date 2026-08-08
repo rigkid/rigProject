@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Rigkid",
   "license": "MIT Rigkid Contributors",
-  "description": "Project envelope + JSON load/save (.rig / configurable ext).",
+  "description": "Host project envelope (CProject/CPage) + .rig document IO. Document = portable .rig (Contract JSON); project = host session.",
   "dependencies": [
     {
       "name": "rigComponent",

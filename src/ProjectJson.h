@@ -11,6 +11,13 @@ namespace project {
 /// Preserves key order in `.rigdoc` files.
 using ordered_json = nlohmann::ordered_json;
 
+/**
+ * @brief Contract version stamped into the `rig` field of every document we write.
+ * @details Tracks the vendored RigWorks in `docs/contract/RigWorks/VERSION`. Bump
+ * both together, and only after the writer actually emits what that version says.
+ */
+inline constexpr const char* kContractVersion = "0.9.0";
+
 inline ordered_json loadOrderedJson(const std::string& path) {
 	ordered_json json;
 	std::ifstream in(path);

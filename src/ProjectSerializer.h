@@ -12,10 +12,12 @@ class MEcs;
 namespace project {
 
 /**
- * @brief Save/load ECS document content as JSON (`.rig` / `.rigdoc` / custom).
- * @details Root shape: `{ "Project": {...}, "entities": [...] }` plus optional
- * root extensions for packs (e.g. plotter). Not wire-compatible with OF `.ofdoc`.
- * Preferred extension is owned by `rigProject::setFileExtension`.
+ * @brief Save/load ECS document content as a RigWorks Contract document.
+ * @details Root shape: `{ "rig": "<version>", "document": {...}, "entities": [
+ * { "id": "...", "components": { "<schema id>": {...} } } ] }`, plus optional
+ * root extensions for packs (e.g. plotter). Components are keyed by schema id,
+ * so any Rig host can read what this writes. Preferred file extension is owned
+ * by `rigProject::setFileExtension`.
  */
 class ProjectSerializer {
   public:

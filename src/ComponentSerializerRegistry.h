@@ -10,7 +10,17 @@ namespace rigkit {
 namespace project {
 
 struct ComponentSerializer {
+	/// Registry-local name, also what the inspector shows.
 	std::string name;
+	/**
+	 * @brief Wire key: a Contract schema id, or an `x.<vendor>.<name>` extension.
+	 * @details Required — registration refuses a codec without one, because a
+	 * component with no id cannot be written into a document. Use a `rig.*` id
+	 * only where the Contract defines that schema; anything host-specific takes
+	 * `x.rigkit.<name>`. Claiming a `rig.*` id the Contract does not have makes
+	 * a document that validates nowhere.
+	 */
+	std::string schemaId;
 	std::function<bool(entt::registry&, entt::entity, ordered_json&)> serialize;
 	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserialize;
 	std::function<bool(entt::registry&, entt::entity)> hasComponent;

@@ -89,7 +89,9 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 	docPtr->modifiedAt = iso8601Now();
 
 	ordered_json root;
-	syncEnvelopeFromProject(*docPtr, root["project"]);
+	// Version first: it is what tells any reader this is a Rig document at all.
+	root["rig"] = kContractVersion;
+	syncEnvelopeFromProject(*docPtr, root["document"]);
 
 	ordered_json entities = ordered_json::array();
 	for (const entt::entity entity : m_registry.collectEntities(reg)) {
@@ -100,11 +102,10 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 			continue;
 		}
 
-		ordered_json entityObj;
-		entityObj["_id"] = static_cast<std::uint32_t>(entity);
+		ordered_json components = ordered_json::object();
 		const std::string name = ecs.entityName(entity);
 		if (!name.empty()) {
-			entityObj["name"] = name;
+			components["rig.meta.named"] = ordered_json{{"name", name}};
 		}
 
 		for (const auto& ser : m_registry.serializers()) {
@@ -113,13 +114,17 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 			}
 			ordered_json compJson;
 			if (ser.serialize && ser.serialize(reg, entity, compJson)) {
-				entityObj[ser.name] = std::move(compJson);
+				components[ser.schemaId] = std::move(compJson);
 			}
 		}
 
-		if (entityObj.size() > 1) {
-			entities.push_back(std::move(entityObj));
+		if (components.empty()) {
+			continue;
 		}
+		ordered_json entityObj;
+		entityObj["id"] = entityIdString(entity);
+		entityObj["components"] = std::move(components);
+		entities.push_back(std::move(entityObj));
 	}
 	root["entities"] = std::move(entities);
 
@@ -142,21 +147,22 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	if (root.is_null() || root.empty()) {
 		return false;
 	}
+	if (!root.contains("rig")) {
+		spdlog::error("[rigProject] '{}' is not a Rig document: missing the \"rig\" version "
+					  "field. Files written before RigKit spoke the Contract cannot be read.",
+					  path);
+		return false;
+	}
 	if (!root.contains("entities")) {
 		spdlog::error("[rigProject] invalid project file: missing entities");
 		return false;
 	}
-	const ordered_json* envelopePtr = nullptr;
-	if (root.contains("project")) {
-		envelopePtr = &root["project"];
-	} else if (root.contains("document")) {
-		envelopePtr = &root["document"];
-	} else {
-		spdlog::error("[rigProject] invalid project file: missing project/document envelope");
+	if (!root.contains("document")) {
+		spdlog::error("[rigProject] invalid project file: missing document envelope");
 		return false;
 	}
 
-	const auto& docJson = *envelopePtr;
+	const auto& docJson = root["document"];
 	const int formatMajor = docJson.value("format_major", 1);
 	if (formatMajor > 1) {
 		spdlog::error("[rigProject] unsupported project major version {}", formatMajor);
@@ -178,22 +184,29 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	// present (shadow under plate under art) survives round-trip. Parents are
 	// remapped after all entities exist — creation order does not matter for that.
 	for (const ordered_json& entityObj : entities) {
-		if (!entityObj.contains("_id")) {
+		if (!entityObj.contains("id") || !entityObj.contains("components")) {
 			continue;
 		}
+		const entt::entity savedEntity = entityIdFromString(entityObj["id"].get<std::string>());
+		if (savedEntity == entt::null) {
+			continue;
+		}
+		const auto& components = entityObj["components"];
 
-		const std::uint32_t savedId = entityObj["_id"].get<std::uint32_t>();
-		const std::string name = entityObj.value("name", "");
+		std::string name;
+		if (components.contains("rig.meta.named")) {
+			name = components["rig.meta.named"].value("name", "");
+		}
 		const entt::entity entity = ecs.createEntity(name);
-		idMap[savedId] = entity;
+		idMap[static_cast<std::uint32_t>(savedEntity)] = entity;
 
 		auto& reg = ecs.registry();
 		for (const auto& ser : m_registry.serializers()) {
-			if (!entityObj.contains(ser.name)) {
+			if (!components.contains(ser.schemaId)) {
 				continue;
 			}
 			if (ser.deserialize) {
-				ser.deserialize(reg, entity, entityObj[ser.name]);
+				ser.deserialize(reg, entity, components[ser.schemaId]);
 			}
 		}
 	}
