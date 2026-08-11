@@ -20,6 +20,11 @@
 #include "CLight.h"
 #include "CLine.h"
 #include "CMesh.h"
+#include "CModBinding.h"
+#include "CModLfo.h"
+#include "CTween.h"
+#include "CMusicClock.h"
+#include "CMusicTransport.h"
 #include "CPolygon.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
@@ -28,9 +33,11 @@
 #include "CSelectable.h"
 #include "CStar.h"
 #include "CTransform.h"
+#include "EntityProperty.h"
 #include "PrimitiveBounds.h"
 #include "core/json.h"
 #include "ecs/MEcs.h"
+#include "ecs/PropertyReflection.h"
 #include "rig/create.h"
 
 namespace rigkit {
@@ -216,6 +223,9 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.geometry.mesh",
 	"rig.mod.lfo",
 	"rig.mod.binding",
+	"rig.anim.tween",
+	"rig.music.clock",
+	"rig.music.transport",
 	"rig.paint.solid",
 	"rig.ui.panel",
 	"rig.ui.group",
@@ -273,23 +283,12 @@ void applyMaterialAlbedo(rigkit::ecs::CDrawStyle& style, const json& comps) {
 	style.hasStroke = false;
 }
 
-void syncPaintStyle(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& id,
-					float brightness = 1.f) {
-	auto pit = std::find_if(doc.paints.begin(), doc.paints.end(),
-							[&](const ContractImportResult::Paint& p) { return p.id == id; });
-	if (pit == doc.paints.end()) {
-		return;
+entt::entity resolveEntity(const ContractImportResult& doc, const std::string& entityId) {
+	auto it = doc.entities.find(entityId);
+	if (it == doc.entities.end()) {
+		return entt::null;
 	}
-	auto eit = doc.entities.find(id);
-	if (eit == doc.entities.end() || !ecs.hasComponent<rigkit::ecs::CDrawStyle>(eit->second)) {
-		return;
-	}
-	auto& style = ecs.getComponent<rigkit::ecs::CDrawStyle>(eit->second);
-	style.hasFill = true;
-	style.fillR = pit->rgba[0] * brightness;
-	style.fillG = pit->rgba[1] * brightness;
-	style.fillB = pit->rgba[2] * brightness;
-	style.fillA = pit->rgba[3];
+	return it->second;
 }
 
 } // namespace
@@ -350,45 +349,71 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 
 		if (comps.contains("rig.mod.lfo")) {
 			const auto& lfo = comps["rig.mod.lfo"];
-			ContractImportResult::Lfo row;
-			row.id = id;
-			row.waveform = lfo.value("waveform", "sine");
-			row.frequency = lfo.value("frequency", 0.f);
-			row.amplitude = lfo.value("amplitude", 1.f);
-			row.offset = lfo.value("offset", 0.f);
-			row.phase = lfo.value("phase", 0.f);
-			result.lfos.push_back(row);
+			rigkit::ecs::CModLfo mod;
+			mod.waveform = lfo.value("waveform", "sine");
+			mod.frequency = lfo.value("frequency", 0.f);
+			mod.amplitude = lfo.value("amplitude", 1.f);
+			mod.offset = lfo.value("offset", 0.f);
+			mod.phase = lfo.value("phase", 0.f);
+			ecs.addComponent(entity, mod);
 		}
 		if (comps.contains("rig.mod.binding")) {
 			const auto& b = comps["rig.mod.binding"];
-			ContractImportResult::Binding row;
-			row.id = id;
-			row.source = b.value("source", "");
-			row.target = b.value("target", "");
-			row.propertyKey = b.value("propertyKey", "");
-			row.depth = b.value("depth", 1.f);
-			row.additive = b.value("additive", false);
+			rigkit::ecs::CModBinding bind;
+			bind.source = b.value("source", "");
+			bind.target = b.value("target", "");
+			bind.propertyKey = b.value("propertyKey", "");
+			bind.depth = b.value("depth", 1.f);
+			bind.additive = b.value("additive", false);
 			if (b.contains("min")) {
-				row.hasMin = true;
-				row.min = b["min"].get<float>();
+				bind.hasMin = true;
+				bind.min = b["min"].get<float>();
 			}
 			if (b.contains("max")) {
-				row.hasMax = true;
-				row.max = b["max"].get<float>();
+				bind.hasMax = true;
+				bind.max = b["max"].get<float>();
 			}
-			result.bindings.push_back(row);
+			ecs.addComponent(entity, bind);
 		}
-
-		if (comps.contains("rig.paint.solid")) {
-			const auto& solid = comps["rig.paint.solid"];
-			ContractImportResult::Paint paint;
-			paint.id = id;
-			if (solid.contains("rgba") && solid["rgba"].is_array() && solid["rgba"].size() >= 3) {
-				paint.rgba = {solid["rgba"][0].get<float>(), solid["rgba"][1].get<float>(),
-							  solid["rgba"][2].get<float>(),
-							  solid["rgba"].size() > 3 ? solid["rgba"][3].get<float>() : 1.f};
-			}
-			result.paints.push_back(paint);
+		if (comps.contains("rig.anim.tween")) {
+			const auto& t = comps["rig.anim.tween"];
+			rigkit::ecs::CTween tw;
+			tw.target = t.value("target", "");
+			tw.propertyKey = t.value("propertyKey", "");
+			tw.from = t.value("from", 0.f);
+			tw.to = t.value("to", 1.f);
+			tw.duration = t.value("duration", 1.f);
+			tw.elapsed = t.value("elapsed", 0.f);
+			tw.easing = t.value("easing", "linear");
+			tw.loop = t.value("loop", false);
+			tw.playing = t.value("playing", true);
+			ecs.addComponent(entity, tw);
+		}
+		if (comps.contains("rig.music.clock")) {
+			const auto& c = comps["rig.music.clock"];
+			rigkit::ecs::CMusicClock clock;
+			clock.ticksPerQuarter = c.value("ticksPerQuarter", clock.ticksPerQuarter);
+			clock.phaseTicks = c.value("phaseTicks", clock.phaseTicks);
+			clock.swingAmount = c.value("swingAmount", clock.swingAmount);
+			clock.swingSubdiv = c.value("swingSubdiv", clock.swingSubdiv);
+			clock.externalSync = c.value("externalSync", clock.externalSync);
+			clock.syncBeat = c.value("syncBeat", clock.syncBeat);
+			clock.syncPhase = c.value("syncPhase", clock.syncPhase);
+			clock.syncPeriodBars = c.value("syncPeriodBars", clock.syncPeriodBars);
+			ecs.addComponent(entity, clock);
+		}
+		if (comps.contains("rig.music.transport")) {
+			const auto& t = comps["rig.music.transport"];
+			rigkit::ecs::CMusicTransport tr;
+			tr.playing = t.value("playing", tr.playing);
+			tr.bpm = t.value("bpm", tr.bpm);
+			tr.timeSigNum = t.value("timeSigNum", tr.timeSigNum);
+			tr.timeSigDen = t.value("timeSigDen", tr.timeSigDen);
+			tr.positionBeats = t.value("positionBeats", tr.positionBeats);
+			tr.loop = t.value("loop", tr.loop);
+			tr.loopStartBeats = t.value("loopStartBeats", tr.loopStartBeats);
+			tr.loopEndBeats = t.value("loopEndBeats", tr.loopEndBeats);
+			ecs.addComponent(entity, tr);
 		}
 
 		if (comps.contains("rig.ui.panel")) {
@@ -722,6 +747,26 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 		ecs.addComponent(entity, rel);
 	}
 
+	// Remap binding/tween entity ids to live entity names.
+	auto remapEntityKey = [&](std::string& key) {
+		auto it = idMap.find(key);
+		if (it == idMap.end()) {
+			return;
+		}
+		const std::string n = ecs.entityName(it->second);
+		if (!n.empty()) {
+			key = n;
+		}
+	};
+	for (auto e : ecs.view<rigkit::ecs::CModBinding>()) {
+		auto& b = ecs.getComponent<rigkit::ecs::CModBinding>(e);
+		remapEntityKey(b.source);
+		remapEntityKey(b.target);
+	}
+	for (auto e : ecs.view<rigkit::ecs::CTween>()) {
+		remapEntityKey(ecs.getComponent<rigkit::ecs::CTween>(e).target);
+	}
+
 	// Contract docs often leave camera rotation as identity; host view is local -Z.
 	// Web always lookAt(scene). Aim identity cameras at the imported geometry AABB.
 	{
@@ -796,9 +841,20 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 	if (!result.skipped.empty()) {
 		spdlog::info("[ContractImport] skipped {} unknown component key(s)", result.skipped.size());
 	}
-	if (!result.lfos.empty() || !result.bindings.empty()) {
-		spdlog::info("[ContractImport] modulators: {} LFO(s), {} binding(s)", result.lfos.size(),
-					 result.bindings.size());
+	{
+		size_t lfoN = 0;
+		size_t bindN = 0;
+		for (auto e : ecs.view<rigkit::ecs::CModLfo>()) {
+			(void)e;
+			++lfoN;
+		}
+		for (auto e : ecs.view<rigkit::ecs::CModBinding>()) {
+			(void)e;
+			++bindN;
+		}
+		if (lfoN > 0 || bindN > 0) {
+			spdlog::info("[ContractImport] modulators: {} LFO(s), {} binding(s) -> ECS", lfoN, bindN);
+		}
 	}
 	if (!result.panels.empty()) {
 		spdlog::info("[ContractImport] ui: {} panel(s), {} control(s), {} action(s)",
@@ -807,193 +863,114 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 	return result;
 }
 
-namespace {
-
-float sampleLfo(const ContractImportResult::Lfo& lfo, float timeSec) {
-	const float t = timeSec * lfo.frequency + lfo.phase;
-	float frac = t - std::floor(t);
-	if (frac < 0.f) {
-		frac += 1.f;
-	}
-	float w = 0.f;
-	if (lfo.waveform == "tri") {
-		w = 1.f - 4.f * std::fabs(frac - 0.5f);
-	} else if (lfo.waveform == "saw") {
-		w = frac * 2.f - 1.f;
-	} else if (lfo.waveform == "square") {
-		w = frac < 0.5f ? 1.f : -1.f;
-	} else {
-		w = std::sin(frac * kTwoPi);
-	}
-	return lfo.offset + lfo.amplitude * w;
-}
-
-} // namespace
-
-void tickContractModulators(rigkit::MEcs& ecs, ContractImportResult& doc, float timeSec) {
-	std::unordered_map<std::string, float> samples;
-	samples.reserve(doc.lfos.size());
-	for (const auto& lfo : doc.lfos) {
-		samples[lfo.id] = sampleLfo(lfo, timeSec);
-	}
-	for (const auto& b : doc.bindings) {
-		auto sit = samples.find(b.source);
-		if (sit == samples.end()) {
-			continue;
-		}
-		float v = sit->second * b.depth;
-		if (b.hasMin) {
-			v = std::max(b.min, v);
-		}
-		if (b.hasMax) {
-			v = std::min(b.max, v);
-		}
-		auto tit = doc.entities.find(b.target);
-		if (tit == doc.entities.end()) {
-			continue;
-		}
-		const entt::entity target = tit->second;
-		if (!ecs.hasComponent<rigkit::ecs::CTransform>(target)) {
-			continue;
-		}
-		auto& tr = ecs.getComponent<rigkit::ecs::CTransform>(target);
-		if (b.propertyKey == "position.x") {
-			tr.position.x = b.additive ? tr.position.x + v : v;
-		} else if (b.propertyKey == "position.y") {
-			tr.position.y = b.additive ? tr.position.y + v : v;
-		} else if (b.propertyKey == "position.z") {
-			tr.position.z = b.additive ? tr.position.z + v : v;
-		} else if (b.propertyKey == "scale.x") {
-			tr.scale.x = b.additive ? tr.scale.x + v : v;
-		} else if (b.propertyKey == "scale.y") {
-			tr.scale.y = b.additive ? tr.scale.y + v : v;
-		} else if (b.propertyKey == "scale.z") {
-			tr.scale.z = b.additive ? tr.scale.z + v : v;
-		}
-	}
-
-	// Web parity: pulse paint.solid LEDs from the first LFO when there are no transform bindings.
-	if (!doc.paints.empty() && !doc.lfos.empty() && doc.bindings.empty()) {
-		const auto& lfo = doc.lfos.front();
-		const float sample = sampleLfo(lfo, timeSec);
-		const float amp = std::max(0.001f, std::fabs(lfo.amplitude));
-		const float brightness =
-			std::min(1.f, std::max(0.15f, (sample / amp + 1.f) * 0.5f));
-		for (const auto& paint : doc.paints) {
-			syncPaintStyle(ecs, doc, paint.id, brightness);
-		}
-	}
-}
-
-std::optional<float> contractGetFloat(const ContractImportResult& doc, const std::string& entityId,
-									  const std::string& propertyKey) {
-	for (const auto& lfo : doc.lfos) {
-		if (lfo.id != entityId) {
-			continue;
-		}
-		if (propertyKey == "frequency") {
-			return lfo.frequency;
-		}
-		if (propertyKey == "amplitude") {
-			return lfo.amplitude;
-		}
-		if (propertyKey == "offset") {
-			return lfo.offset;
-		}
-		if (propertyKey == "phase") {
-			return lfo.phase;
-		}
-	}
-	auto eit = doc.entities.find(entityId);
-	if (eit == doc.entities.end()) {
+std::optional<float> contractGetFloat(rigkit::MEcs& ecs, const ContractImportResult& doc,
+									  const std::string& entityId, const std::string& propertyKey) {
+	const entt::entity e = resolveEntity(doc, entityId);
+	if (e == entt::null) {
 		return std::nullopt;
 	}
-	return std::nullopt;
+	return rigkit::ecs::readEntityProperty(ecs, e, propertyKey);
 }
 
-std::optional<std::string> contractGetString(const ContractImportResult& doc,
+std::optional<std::string> contractGetString(rigkit::MEcs& ecs, const ContractImportResult& doc,
 											 const std::string& entityId,
 											 const std::string& propertyKey) {
-	for (const auto& lfo : doc.lfos) {
-		if (lfo.id == entityId && propertyKey == "waveform") {
-			return lfo.waveform;
-		}
-	}
-	return std::nullopt;
-}
-
-std::optional<std::array<float, 4>> contractGetRgba(const ContractImportResult& doc,
-													const std::string& entityId,
-													const std::string& propertyKey) {
-	if (propertyKey != "rgba") {
+	const entt::entity e = resolveEntity(doc, entityId);
+	if (e == entt::null) {
 		return std::nullopt;
 	}
-	for (const auto& paint : doc.paints) {
-		if (paint.id == entityId) {
-			return paint.rgba;
+	if (ecs.hasComponent<rigkit::ecs::CModLfo>(e) && propertyKey == "waveform") {
+		return ecs.getComponent<rigkit::ecs::CModLfo>(e).waveform;
+	}
+	for (const auto& typeInfo : ecs.componentTypes()) {
+		if (!ecs.hasRegisteredComponent(typeInfo, e)) {
+			continue;
+		}
+		for (auto& prop : ecs.registeredProperties(typeInfo, e)) {
+			if (prop.name == propertyKey && prop.type == EPT_STRING) {
+				return *static_cast<std::string*>(prop.data);
+			}
 		}
 	}
 	return std::nullopt;
 }
 
-bool contractSetFloat(ContractImportResult& doc, rigkit::MEcs& ecs, const std::string& entityId,
+std::optional<std::array<float, 4>> contractGetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc,
+													const std::string& entityId,
+													const std::string& propertyKey) {
+	(void)propertyKey;
+	const entt::entity e = resolveEntity(doc, entityId);
+	if (e == entt::null || !ecs.hasComponent<rigkit::ecs::CDrawStyle>(e)) {
+		return std::nullopt;
+	}
+	const auto& s = ecs.getComponent<rigkit::ecs::CDrawStyle>(e);
+	return std::array<float, 4>{s.fillR, s.fillG, s.fillB, s.fillA};
+}
+
+bool contractSetFloat(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
 					  const std::string& propertyKey, float value) {
-	(void)ecs;
-	for (auto& lfo : doc.lfos) {
-		if (lfo.id != entityId) {
-			continue;
-		}
-		if (propertyKey == "frequency") {
-			lfo.frequency = value;
-			return true;
-		}
-		if (propertyKey == "amplitude") {
-			lfo.amplitude = value;
-			return true;
-		}
-		if (propertyKey == "offset") {
-			lfo.offset = value;
-			return true;
-		}
-		if (propertyKey == "phase") {
-			lfo.phase = value;
-			return true;
-		}
-	}
-	return false;
-}
-
-bool contractSetString(ContractImportResult& doc, const std::string& entityId,
-					   const std::string& propertyKey, const std::string& value) {
-	for (auto& lfo : doc.lfos) {
-		if (lfo.id == entityId && propertyKey == "waveform") {
-			lfo.waveform = value;
-			return true;
-		}
-	}
-	return false;
-}
-
-bool contractSetRgba(ContractImportResult& doc, rigkit::MEcs& ecs, const std::string& entityId,
-					 const std::string& propertyKey, const std::array<float, 4>& rgba) {
-	if (propertyKey != "rgba") {
+	const entt::entity e = resolveEntity(doc, entityId);
+	if (e == entt::null) {
 		return false;
 	}
-	for (auto& paint : doc.paints) {
-		if (paint.id != entityId) {
+	return rigkit::ecs::writeEntityProperty(ecs, e, propertyKey, value);
+}
+
+bool contractSetString(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
+					   const std::string& propertyKey, const std::string& value) {
+	const entt::entity e = resolveEntity(doc, entityId);
+	if (e == entt::null) {
+		return false;
+	}
+	if (ecs.hasComponent<rigkit::ecs::CModLfo>(e) && propertyKey == "waveform") {
+		ecs.getComponent<rigkit::ecs::CModLfo>(e).waveform = value;
+		return true;
+	}
+	for (const auto& typeInfo : ecs.componentTypes()) {
+		if (!ecs.hasRegisteredComponent(typeInfo, e)) {
 			continue;
 		}
-		paint.rgba = rgba;
-		syncPaintStyle(ecs, doc, entityId, 1.f);
-		return true;
+		for (auto& prop : ecs.registeredProperties(typeInfo, e)) {
+			if (prop.name == propertyKey && prop.type == EPT_STRING) {
+				*static_cast<std::string*>(prop.data) = value;
+				return true;
+			}
+		}
 	}
 	return false;
 }
 
-bool contractRunAction(ContractImportResult& doc, const std::string& actionId, float timeSec) {
+bool contractSetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
+					 const std::string& propertyKey, const std::array<float, 4>& rgba) {
+	(void)propertyKey;
+	const entt::entity e = resolveEntity(doc, entityId);
+	if (e == entt::null) {
+		return false;
+	}
+	if (!ecs.hasComponent<rigkit::ecs::CDrawStyle>(e)) {
+		rigkit::ecs::CDrawStyle style;
+		style.hasFill = true;
+		style.fillR = rgba[0];
+		style.fillG = rgba[1];
+		style.fillB = rgba[2];
+		style.fillA = rgba[3];
+		ecs.addComponent(e, style);
+		return true;
+	}
+	auto& s = ecs.getComponent<rigkit::ecs::CDrawStyle>(e);
+	s.hasFill = true;
+	s.fillR = rgba[0];
+	s.fillG = rgba[1];
+	s.fillB = rgba[2];
+	s.fillA = rgba[3];
+	return true;
+}
+
+bool contractRunAction(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& actionId) {
+	(void)doc;
 	if (actionId == "lfo.resetPhase") {
-		for (auto& lfo : doc.lfos) {
-			lfo.phase = -(timeSec * lfo.frequency);
+		for (auto e : ecs.view<rigkit::ecs::CModLfo>()) {
+			ecs.getComponent<rigkit::ecs::CModLfo>(e).phase = 0.f;
 		}
 		return true;
 	}
@@ -1013,4 +990,3 @@ ContractImportResult importContractFile(rigkit::MEcs& ecs, const std::string& pa
 
 } // namespace project
 } // namespace rigkit
-

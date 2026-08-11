@@ -8,6 +8,11 @@
 #include "CIndexedAtlas.h"
 #include "CLight.h"
 #include "CMesh.h"
+#include "CModBinding.h"
+#include "CModLfo.h"
+#include "CMusicClock.h"
+#include "CMusicTransport.h"
+#include "CTween.h"
 #include "CPage.h"
 #include "CPalette.h"
 #include "CArc.h"
@@ -760,6 +765,166 @@ bool deserializeRelationship(entt::registry& reg, entt::entity e, const ordered_
 	return true;
 }
 
+bool serializeModLfo(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CModLfo>(e)) {
+		return false;
+	}
+	const auto& m = reg.get<ecs::CModLfo>(e);
+	j["waveform"] = m.waveform;
+	j["frequency"] = m.frequency;
+	j["amplitude"] = m.amplitude;
+	j["offset"] = m.offset;
+	j["phase"] = m.phase;
+	return true;
+}
+
+bool deserializeModLfo(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CModLfo m;
+	m.waveform = j.value("waveform", m.waveform);
+	m.frequency = j.value("frequency", m.frequency);
+	m.amplitude = j.value("amplitude", m.amplitude);
+	m.offset = j.value("offset", m.offset);
+	m.phase = j.value("phase", m.phase);
+	reg.emplace_or_replace<ecs::CModLfo>(e, m);
+	return true;
+}
+
+bool serializeModBinding(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CModBinding>(e)) {
+		return false;
+	}
+	const auto& b = reg.get<ecs::CModBinding>(e);
+	j["source"] = b.source;
+	j["target"] = b.target;
+	j["propertyKey"] = b.propertyKey;
+	j["depth"] = b.depth;
+	j["additive"] = b.additive;
+	if (b.hasMin) {
+		j["min"] = b.min;
+	}
+	if (b.hasMax) {
+		j["max"] = b.max;
+	}
+	return true;
+}
+
+bool deserializeModBinding(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CModBinding b;
+	b.source = j.value("source", b.source);
+	b.target = j.value("target", b.target);
+	b.propertyKey = j.value("propertyKey", b.propertyKey);
+	b.depth = j.value("depth", b.depth);
+	b.additive = j.value("additive", b.additive);
+	if (j.contains("min") && j["min"].is_number()) {
+		b.min = j["min"].get<float>();
+		b.hasMin = true;
+	}
+	if (j.contains("max") && j["max"].is_number()) {
+		b.max = j["max"].get<float>();
+		b.hasMax = true;
+	}
+	reg.emplace_or_replace<ecs::CModBinding>(e, b);
+	return true;
+}
+
+bool serializeTween(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CTween>(e)) {
+		return false;
+	}
+	const auto& t = reg.get<ecs::CTween>(e);
+	j["target"] = t.target;
+	j["propertyKey"] = t.propertyKey;
+	j["from"] = t.from;
+	j["to"] = t.to;
+	j["duration"] = t.duration;
+	j["elapsed"] = t.elapsed;
+	j["easing"] = t.easing;
+	j["loop"] = t.loop;
+	j["playing"] = t.playing;
+	return true;
+}
+
+bool deserializeTween(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CTween t;
+	t.target = j.value("target", t.target);
+	t.propertyKey = j.value("propertyKey", t.propertyKey);
+	t.from = j.value("from", t.from);
+	t.to = j.value("to", t.to);
+	t.duration = j.value("duration", t.duration);
+	t.elapsed = j.value("elapsed", t.elapsed);
+	t.easing = j.value("easing", t.easing);
+	t.loop = j.value("loop", t.loop);
+	t.playing = j.value("playing", t.playing);
+	reg.emplace_or_replace<ecs::CTween>(e, t);
+	return true;
+}
+
+bool serializeMusicClock(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CMusicClock>(e)) {
+		return false;
+	}
+	const auto& c = reg.get<ecs::CMusicClock>(e);
+	j["ticksPerQuarter"] = c.ticksPerQuarter;
+	j["phaseTicks"] = c.phaseTicks;
+	j["swingAmount"] = c.swingAmount;
+	j["swingSubdiv"] = c.swingSubdiv;
+	j["externalSync"] = c.externalSync;
+	if (c.externalSync) {
+		j["syncBeat"] = c.syncBeat;
+		j["syncPhase"] = c.syncPhase;
+	}
+	if (c.syncPeriodBars > 0.f) {
+		j["syncPeriodBars"] = c.syncPeriodBars;
+	}
+	return true;
+}
+
+bool deserializeMusicClock(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CMusicClock c;
+	c.ticksPerQuarter = j.value("ticksPerQuarter", c.ticksPerQuarter);
+	c.phaseTicks = j.value("phaseTicks", c.phaseTicks);
+	c.swingAmount = j.value("swingAmount", c.swingAmount);
+	c.swingSubdiv = j.value("swingSubdiv", c.swingSubdiv);
+	c.externalSync = j.value("externalSync", c.externalSync);
+	c.syncBeat = j.value("syncBeat", c.syncBeat);
+	c.syncPhase = j.value("syncPhase", c.syncPhase);
+	c.syncPeriodBars = j.value("syncPeriodBars", c.syncPeriodBars);
+	reg.emplace_or_replace<ecs::CMusicClock>(e, c);
+	return true;
+}
+
+bool serializeMusicTransport(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CMusicTransport>(e)) {
+		return false;
+	}
+	const auto& t = reg.get<ecs::CMusicTransport>(e);
+	j["playing"] = t.playing;
+	j["bpm"] = t.bpm;
+	j["timeSigNum"] = t.timeSigNum;
+	j["timeSigDen"] = t.timeSigDen;
+	j["positionBeats"] = t.positionBeats;
+	j["loop"] = t.loop;
+	if (t.loop) {
+		j["loopStartBeats"] = t.loopStartBeats;
+		j["loopEndBeats"] = t.loopEndBeats;
+	}
+	return true;
+}
+
+bool deserializeMusicTransport(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CMusicTransport t;
+	t.playing = j.value("playing", t.playing);
+	t.bpm = j.value("bpm", t.bpm);
+	t.timeSigNum = j.value("timeSigNum", t.timeSigNum);
+	t.timeSigDen = j.value("timeSigDen", t.timeSigDen);
+	t.positionBeats = j.value("positionBeats", t.positionBeats);
+	t.loop = j.value("loop", t.loop);
+	t.loopStartBeats = j.value("loopStartBeats", t.loopStartBeats);
+	t.loopEndBeats = j.value("loopEndBeats", t.loopEndBeats);
+	reg.emplace_or_replace<ecs::CMusicTransport>(e, t);
+	return true;
+}
+
 bool serializeGuide(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!reg.all_of<ecs::CGuide>(e)) {
 		return false;
@@ -818,6 +983,15 @@ void registerCoreSerializers(ComponentSerializerRegistry& registry) {
 								   serializeDrawStyle, deserializeDrawStyle);
 	addSerializer<ecs::CLight>(registry, "Light", "rig.render.light", serializeLight,
 							   deserializeLight);
+	addSerializer<ecs::CModLfo>(registry, "ModLfo", "rig.mod.lfo", serializeModLfo,
+								deserializeModLfo);
+	addSerializer<ecs::CModBinding>(registry, "ModBinding", "rig.mod.binding", serializeModBinding,
+									deserializeModBinding);
+	addSerializer<ecs::CTween>(registry, "Tween", "rig.anim.tween", serializeTween, deserializeTween);
+	addSerializer<ecs::CMusicClock>(registry, "MusicClock", "rig.music.clock", serializeMusicClock,
+									deserializeMusicClock);
+	addSerializer<ecs::CMusicTransport>(registry, "MusicTransport", "rig.music.transport",
+										serializeMusicTransport, deserializeMusicTransport);
 	addSerializer<ecs::CDrawStyle>(registry, "StrokeStyle", "x.rigkit.stroke_style",
 								   serializeStrokeStyle, deserializeStrokeStyle);
 	addSerializer<ecs::CLight>(registry, "LightShading", "x.rigkit.light_shading",

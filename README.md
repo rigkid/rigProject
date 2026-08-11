@@ -41,11 +41,11 @@ Reads [RigWorks](https://github.com/rigkid/RigWorks) documents from any host, in
 
 auto result = rigkit::project::importContractFile(*ecs, path);
 if (!result.ok) { /* result.error */ }
-// Update:
-rigkit::project::tickContractModulators(*ecs, result, timeSec);
+// Modulators: CModLfo + CModBinding advance via SModulators (Update systems).
+// UI controls are views over live ECS properties (contractGet*/Set* take MEcs&).
 ```
 
-Maps geometry / transform / camera / light / material albedo / paint / LFO+binding / **`rig.media.code` → `CCode`** into host PODs. UI panel / control / action rows stay on `ContractImportResult` for the app’s UI fulfillment (e.g. RigViewer’s Contract UI window).
+Maps geometry / transform / camera / light / material albedo / paint / LFO+binding / **`rig.media.code` → `CCode`** into host PODs. UI panel / control / action rows stay on `ContractImportResult` as **layout only** — property values live on entities.
 
 ## Build Example
 
