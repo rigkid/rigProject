@@ -25,10 +25,7 @@ bool hasFileExtension(const std::string& path) {
 
 } // namespace
 
-rigProject::rigProject() : IPack("rigProject") {
-	setDescription("Project/page data + JSON load/save (.rig)");
-	addDependency("rigComponent");
-}
+rigProject::rigProject() : IPack("rigProject") {}
 
 bool rigProject::init() {
 	spdlog::info("[rigProject] init (ext='{}')", m_fileExtension);
