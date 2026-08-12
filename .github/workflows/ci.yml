@@ -7,7 +7,7 @@ on:
 
 env:
   PACK: rigProject
-  HERO: document
+  EXAMPLE: document
 
 jobs:
   example:
@@ -48,14 +48,14 @@ jobs:
             libgl1-mesa-dev \
             libwayland-dev libwayland-bin libxkbcommon-dev
 
-      - name: Configure hero
+      - name: Configure example
         working-directory: host
         run: >
-          cmake -S "packs/${PACK}/examples/${HERO}"
-          -B "packs/${PACK}/examples/${HERO}/build"
+          cmake -S "packs/${PACK}/examples/${EXAMPLE}"
+          -B "packs/${PACK}/examples/${EXAMPLE}/build"
           -G Ninja
           -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build hero
+      - name: Build example
         working-directory: host
-        run: cmake --build "packs/${PACK}/examples/${HERO}/build"
+        run: cmake --build "packs/${PACK}/examples/${EXAMPLE}/build"
