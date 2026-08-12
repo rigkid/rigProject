@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include "CArc.h"
+#include "CSpline.h"
 #include "CCamera.h"
 #include "CCode.h"
 #include "CDrawStyle.h"
@@ -25,6 +26,8 @@
 #include "CTween.h"
 #include "CMusicClock.h"
 #include "CMusicTransport.h"
+#include "CPage.h"
+#include "CPalette.h"
 #include "CPolygon.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
@@ -35,6 +38,7 @@
 #include "CTransform.h"
 #include "EntityProperty.h"
 #include "PrimitiveBounds.h"
+#include "core/TypeJson.h"
 #include "core/json.h"
 #include "ecs/MEcs.h"
 #include "ecs/PropertyReflection.h"
@@ -65,22 +69,6 @@ json loadFile(const std::string& path, std::string& error) {
 	}
 }
 
-glm::vec3 vec3From(const json& j, const glm::vec3& fallback = {}) {
-	if (!j.is_array() || j.size() < 3) {
-		return fallback;
-	}
-	return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>()};
-}
-
-glm::quat quatFrom(const json& j) {
-	if (!j.is_array() || j.size() < 4) {
-		return glm::quat(1.f, 0.f, 0.f, 0.f);
-	}
-	// Contract: x,y,z,w — glm ctor: w,x,y,z
-	return glm::normalize(
-		glm::quat(j[3].get<float>(), j[0].get<float>(), j[1].get<float>(), j[2].get<float>()));
-}
-
 rigkit::ecs::CDrawStyle styleFrom(const json& comps) {
 	rigkit::ecs::CDrawStyle style;
 	style.hasFill = false;
@@ -94,17 +82,19 @@ rigkit::ecs::CDrawStyle styleFrom(const json& comps) {
 	const bool hasStrokeField = p.contains("strokeRgba");
 	style.hasFill = p.value("hasFill", hasFillField);
 	style.hasStroke = p.value("hasStroke", hasStrokeField);
-	if (hasFillField && p["fillRgba"].is_array() && p["fillRgba"].size() >= 3) {
-		style.fillR = p["fillRgba"][0].get<float>();
-		style.fillG = p["fillRgba"][1].get<float>();
-		style.fillB = p["fillRgba"][2].get<float>();
-		style.fillA = p["fillRgba"].size() > 3 ? p["fillRgba"][3].get<float>() : 1.f;
+	if (hasFillField) {
+		const glm::vec4 fill = rgbaFromJson(p["fillRgba"]);
+		style.fillR = fill.r;
+		style.fillG = fill.g;
+		style.fillB = fill.b;
+		style.fillA = fill.a;
 	}
-	if (hasStrokeField && p["strokeRgba"].is_array() && p["strokeRgba"].size() >= 3) {
-		style.strokeR = p["strokeRgba"][0].get<float>();
-		style.strokeG = p["strokeRgba"][1].get<float>();
-		style.strokeB = p["strokeRgba"][2].get<float>();
-		style.strokeA = p["strokeRgba"].size() > 3 ? p["strokeRgba"][3].get<float>() : 1.f;
+	if (hasStrokeField) {
+		const glm::vec4 stroke = rgbaFromJson(p["strokeRgba"]);
+		style.strokeR = stroke.r;
+		style.strokeG = stroke.g;
+		style.strokeB = stroke.b;
+		style.strokeA = stroke.a;
 	}
 	style.strokeWidth = p.value("strokeWidth", 1.f);
 	return style;
@@ -116,13 +106,13 @@ void applyTransform(rigkit::ecs::CTransform& t, const json& comps) {
 	}
 	const auto& tr = comps["rig.spatial.transform"];
 	if (tr.contains("position")) {
-		t.position = vec3From(tr["position"]);
+		t.position = vec3FromJson(tr["position"]);
 	}
 	if (tr.contains("scale")) {
-		t.scale = vec3From(tr["scale"], {1.f, 1.f, 1.f});
+		t.scale = vec3FromJson(tr["scale"], {1.f, 1.f, 1.f});
 	}
 	if (tr.contains("rotation")) {
-		t.setRotationQuat(quatFrom(tr["rotation"]));
+		t.setRotationQuat(quatFromJson(tr["rotation"]));
 	}
 }
 
@@ -181,7 +171,7 @@ rigkit::ecs::CMesh meshFromContract(const json& meshJson) {
 			}
 		} else {
 			for (const auto& v : positions) {
-				mesh.positions.push_back(vec3From(v));
+				mesh.positions.push_back(vec3FromJson(v));
 			}
 		}
 	}
@@ -193,8 +183,7 @@ rigkit::ecs::CMesh meshFromContract(const json& meshJson) {
 	if (meshJson.contains("faceColors") && meshJson["faceColors"].is_array()) {
 		for (const auto& c : meshJson["faceColors"]) {
 			if (c.is_array() && c.size() >= 3) {
-				mesh.faceColors.emplace_back(c[0].get<float>(), c[1].get<float>(), c[2].get<float>(),
-											 c.size() > 3 ? c[3].get<float>() : 1.f);
+				mesh.faceColors.push_back(rgbaFromJson(c));
 			}
 		}
 	}
@@ -205,6 +194,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.meta.named",
 	"rig.spatial.transform",
 	"rig.spatial.relationship",
+	"rig.spatial.anchor",
 	"rig.spatial.camera",
 	"rig.spatial.group",
 	"rig.spatial.layer",
@@ -218,6 +208,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.geometry.regular_polygon",
 	"rig.geometry.star",
 	"rig.geometry.arc",
+	"rig.geometry.spline",
 	"rig.geometry.ring",
 	"rig.geometry.path",
 	"rig.geometry.mesh",
@@ -234,6 +225,8 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.render.material",
 	"rig.render.light",
 	"rig.media.code",
+	"rig.layout.page",
+	"rig.pixel.palette",
 };
 
 /// Any geometry schema at all — the paint-only fallback must not fire when the
@@ -262,6 +255,35 @@ void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
 	transform.rotation = glm::normalize(glm::quat_cast(glm::mat3(xAxis, yAxis, zAxis)));
 }
 
+/// Nine Contract cells onto the five a page anchors to; see CoreSerializers.
+int originAnchorFromId(const std::string& id) {
+	static const char* const kIds[] = {"topLeft", "topRight", "bottomLeft", "bottomRight",
+									   "center"};
+	for (int i = 0; i < 5; ++i) {
+		if (id == kIds[i]) {
+			return i;
+		}
+	}
+	if (id == "bottomCenter") {
+		return 2;
+	}
+	if (id == "middleRight") {
+		return 1;
+	}
+	return 0; // topLeft, topCenter, middleLeft
+}
+
+void readPageEdges(const json& j, const char* key, float& top, float& right, float& bottom,
+				   float& left) {
+	if (!j.contains(key) || !j[key].is_array() || j[key].size() < 4) {
+		return;
+	}
+	top = j[key][0].get<float>();
+	right = j[key][1].get<float>();
+	bottom = j[key][2].get<float>();
+	left = j[key][3].get<float>();
+}
+
 void applyMaterialAlbedo(rigkit::ecs::CDrawStyle& style, const json& comps) {
 	if (!comps.contains("rig.render.material")) {
 		return;
@@ -270,15 +292,17 @@ void applyMaterialAlbedo(rigkit::ecs::CDrawStyle& style, const json& comps) {
 	if (!m.contains("albedoRgb") || !m["albedoRgb"].is_array() || m["albedoRgb"].size() < 3) {
 		return;
 	}
+	const glm::vec3 albedo = rgbFromJson(m["albedoRgb"]);
 	style.hasFill = true;
-	style.fillR = m["albedoRgb"][0].get<float>();
-	style.fillG = m["albedoRgb"][1].get<float>();
-	style.fillB = m["albedoRgb"][2].get<float>();
+	style.fillR = albedo.r;
+	style.fillG = albedo.g;
+	style.fillB = albedo.b;
 	style.fillA = 1.f;
-	if (m.contains("emissive") && m["emissive"].is_array() && m["emissive"].size() >= 3) {
-		style.fillR = std::min(1.f, style.fillR + m["emissive"][0].get<float>());
-		style.fillG = std::min(1.f, style.fillG + m["emissive"][1].get<float>());
-		style.fillB = std::min(1.f, style.fillB + m["emissive"][2].get<float>());
+	if (m.contains("emissive")) {
+		const glm::vec3 em = rgbFromJson(m["emissive"]);
+		style.fillR = std::min(1.f, style.fillR + em.r);
+		style.fillG = std::min(1.f, style.fillG + em.g);
+		style.fillB = std::min(1.f, style.fillB + em.b);
 	}
 	style.hasStroke = false;
 }
@@ -416,6 +440,47 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			ecs.addComponent(entity, tr);
 		}
 
+		if (comps.contains("rig.layout.page")) {
+			const auto& p = comps["rig.layout.page"];
+			rigkit::ecs::CPage page;
+			page.name = name;
+			page.index = p.value("index", page.index);
+			page.unit = p.value("unit", page.unit);
+			page.width = p.value("width", page.width);
+			page.height = p.value("height", page.height);
+			readPageEdges(p, "margins", page.marginTop, page.marginRight, page.marginBottom,
+						  page.marginLeft);
+			readPageEdges(p, "bleed", page.bleedTop, page.bleedRight, page.bleedBottom,
+						  page.bleedLeft);
+			readPageEdges(p, "slug", page.slugTop, page.slugRight, page.slugBottom, page.slugLeft);
+			// The anchor is its own component; older documents named it on the
+			// page, so both are read.
+			if (p.contains("originAnchor") && p["originAnchor"].is_string()) {
+				page.originAnchor = originAnchorFromId(p["originAnchor"].get<std::string>());
+			}
+			if (comps.contains("rig.spatial.anchor")) {
+				const auto& anchor = comps["rig.spatial.anchor"];
+				if (anchor.contains("point") && anchor["point"].is_string()) {
+					page.originAnchor = originAnchorFromId(anchor["point"].get<std::string>());
+				}
+			}
+			ecs.addComponent(entity, page);
+		}
+
+		if (comps.contains("rig.pixel.palette")) {
+			const auto& pal = comps["rig.pixel.palette"];
+			rigkit::ecs::CPalette palette = rigkit::ecs::CPalette::default16();
+			if (pal.contains("colors") && pal["colors"].is_array()) {
+				const size_t n = std::min(pal["colors"].size(),
+										  static_cast<size_t>(rigkit::ecs::CPalette::kCount));
+				for (size_t i = 0; i < n; ++i) {
+					const glm::vec4 c = rgbaFromJson(pal["colors"][i]);
+					palette.colors[i] = c;
+				}
+			}
+			ecs.addComponent(entity, palette);
+		}
+
 		if (comps.contains("rig.ui.panel")) {
 			const auto& p = comps["rig.ui.panel"];
 			ContractImportResult::Panel panel;
@@ -545,10 +610,11 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			const std::string type = light.value("type", "directional");
 			L.type = (type == "point") ? rigkit::ecs::CLight::Type::Point
 									   : rigkit::ecs::CLight::Type::Directional;
-			if (light.contains("rgb") && light["rgb"].is_array() && light["rgb"].size() >= 3) {
-				L.colorR = light["rgb"][0].get<float>();
-				L.colorG = light["rgb"][1].get<float>();
-				L.colorB = light["rgb"][2].get<float>();
+			if (light.contains("rgb")) {
+				const glm::vec3 rgb = rgbFromJson(light["rgb"], {L.colorR, L.colorG, L.colorB});
+				L.colorR = rgb.r;
+				L.colorG = rgb.g;
+				L.colorB = rgb.b;
 			}
 			L.intensity = light.value("intensity", 1.f);
 			L.ambient = light.value("ambient", 0.35f);
@@ -570,11 +636,12 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			shape.ry = 80.f;
 			ecs.addComponent(entity, shape);
 			if (solid.contains("rgba") && solid["rgba"].is_array() && solid["rgba"].size() >= 3) {
+				const glm::vec4 rgba = rgbaFromJson(solid["rgba"]);
 				style.hasFill = true;
-				style.fillR = solid["rgba"][0].get<float>();
-				style.fillG = solid["rgba"][1].get<float>();
-				style.fillB = solid["rgba"][2].get<float>();
-				style.fillA = solid["rgba"].size() > 3 ? solid["rgba"][3].get<float>() : 1.f;
+				style.fillR = rgba.r;
+				style.fillG = rgba.g;
+				style.fillB = rgba.b;
+				style.fillA = rgba.a;
 				style.hasStroke = false;
 			}
 			if (!comps.contains("rig.spatial.transform")) {
@@ -639,7 +706,7 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			if (poly.contains("points") && poly["points"].is_array()) {
 				for (const auto& p : poly["points"]) {
 					if (p.is_array() && p.size() >= 2) {
-						shape.points.emplace_back(p[0].get<float>(), p[1].get<float>());
+						shape.points.push_back(vec2FromJson(p));
 					}
 				}
 			}
@@ -651,11 +718,47 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			rigkit::ecs::CArc shape;
 			shape.cx = arc.value("cx", 0.f);
 			shape.cy = arc.value("cy", 0.f);
-			shape.radius = arc.value("radius", 1.f);
+			if (arc.contains("rx") || arc.contains("ry")) {
+				shape.rx = arc.value("rx", arc.value("radius", 1.f));
+				shape.ry = arc.value("ry", arc.value("radius", 1.f));
+			} else {
+				shape.setRadius(arc.value("radius", 1.f));
+			}
 			shape.startAngleDegrees = arc.value("startAngleDegrees", 0.f);
 			shape.endAngleDegrees = arc.value("endAngleDegrees", 90.f);
 			shape.pie = arc.value("pie", false);
 			ecs.addComponent(entity, shape);
+			wroteGeometry = true;
+		} else if (comps.contains("rig.geometry.spline")) {
+			const auto& sp = comps["rig.geometry.spline"];
+			rigkit::ecs::CSpline shape;
+			shape.degree = sp.value("degree", 3);
+			shape.closed = sp.value("closed", false);
+			if (sp.contains("controlPoints") && sp["controlPoints"].is_array()) {
+				for (const auto& p : sp["controlPoints"]) {
+					if (p.is_array() && p.size() >= 2) {
+						shape.controlPoints.push_back(vec2FromJson(p));
+					}
+				}
+			}
+			if (sp.contains("knots") && sp["knots"].is_array()) {
+				for (const auto& k : sp["knots"]) {
+					shape.knots.push_back(k.get<float>());
+				}
+			}
+			if (sp.contains("weights") && sp["weights"].is_array()) {
+				for (const auto& w : sp["weights"]) {
+					shape.weights.push_back(w.get<float>());
+				}
+			}
+			if (sp.contains("fitPoints") && sp["fitPoints"].is_array()) {
+				for (const auto& p : sp["fitPoints"]) {
+					if (p.is_array() && p.size() >= 2) {
+						shape.fitPoints.push_back(vec2FromJson(p));
+					}
+				}
+			}
+			ecs.addComponent(entity, std::move(shape));
 			wroteGeometry = true;
 		} else if (comps.contains("rig.geometry.ring")) {
 			const auto& ring = comps["rig.geometry.ring"];

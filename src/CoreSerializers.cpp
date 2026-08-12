@@ -23,60 +23,78 @@
 #include "CRegularPolygon.h"
 #include "CRelationship.h"
 #include "CRing.h"
+#include "CSpline.h"
 #include "CStar.h"
 #include "CTransform.h"
 #include "EntityIdRemap.h"
 #include "ProjectSerializer.h"
+#include "core/TypeJson.h"
 #include "ecs/components/CGuide.h"
 
 namespace rigkit {
 namespace project {
 namespace {
 
-ordered_json vec3ToJson(const glm::vec3& v) {
-	return ordered_json::array({v.x, v.y, v.z});
-}
+/// `rig.spatial.anchor` ids for `CPage::originAnchor`. Same order as plotter
+/// OriginAnchor.h — the five cells a page can anchor to here.
+constexpr const char* kOriginAnchorIds[] = {"topLeft", "topRight", "bottomLeft", "bottomRight",
+											"center"};
+constexpr int kOriginAnchorIdCount = 5;
 
-glm::vec3 vec3FromJson(const ordered_json& j, const glm::vec3& fallback = {}) {
-	if (!j.is_array() || j.size() < 3) {
-		return fallback;
+const char* originAnchorId(int v) {
+	if (v >= 0 && v < kOriginAnchorIdCount) {
+		return kOriginAnchorIds[v];
 	}
-	return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>()};
+	return kOriginAnchorIds[0];
 }
 
-ordered_json vec2ToJson(const glm::vec2& v) {
-	return ordered_json::array({v.x, v.y});
-}
-
-glm::vec2 vec2FromJson(const ordered_json& j, const glm::vec2& fallback = {}) {
-	if (!j.is_array() || j.size() < 2) {
-		return fallback;
+/**
+ * @brief Read a `rig.spatial.anchor` cell into the five a page understands.
+ * @details The Contract names nine cells; a page here anchors to a corner or
+ * the middle. An edge cell keeps the side it names and falls to the nearer
+ * corner, so an imported page lands on the same edge it was authored against.
+ */
+int originAnchorFromId(const std::string& id) {
+	for (int i = 0; i < kOriginAnchorIdCount; ++i) {
+		if (id == kOriginAnchorIds[i]) {
+			return i;
+		}
 	}
-	return {j[0].get<float>(), j[1].get<float>()};
-}
-
-ordered_json vec4ToJson(const glm::vec4& v) {
-	return ordered_json::array({v.x, v.y, v.z, v.w});
-}
-
-glm::vec4 vec4FromJson(const ordered_json& j, const glm::vec4& fallback = {}) {
-	if (!j.is_array() || j.size() < 4) {
-		return fallback;
+	if (id == "topCenter") {
+		return 0; // topLeft
 	}
-	return {j[0].get<float>(), j[1].get<float>(), j[2].get<float>(), j[3].get<float>()};
-}
-
-/// Rig quat field order: x, y, z, w.
-ordered_json quatToJson(const glm::quat& q) {
-	return ordered_json::array({q.x, q.y, q.z, q.w});
-}
-
-glm::quat quatFromJson(const ordered_json& j, const glm::quat& fallback = {1.f, 0.f, 0.f, 0.f}) {
-	if (!j.is_array() || j.size() < 4) {
-		return fallback;
+	if (id == "bottomCenter") {
+		return 2; // bottomLeft
 	}
-	return glm::normalize(glm::quat(j[3].get<float>(), j[0].get<float>(), j[1].get<float>(),
-									j[2].get<float>()));
+	if (id == "middleLeft") {
+		return 0; // topLeft
+	}
+	if (id == "middleRight") {
+		return 1; // topRight
+	}
+	return 0;
+}
+
+bool edgesAllZero(float a, float b, float c, float d) {
+	return a == 0.f && b == 0.f && c == 0.f && d == 0.f;
+}
+
+void writeEdges(ordered_json& j, const char* key, float top, float right, float bottom, float left) {
+	if (edgesAllZero(top, right, bottom, left)) {
+		return;
+	}
+	j[key] = ordered_json::array({top, right, bottom, left});
+}
+
+void readEdges(const ordered_json& j, const char* key, float& top, float& right, float& bottom,
+			   float& left) {
+	if (!j.contains(key) || !j[key].is_array() || j[key].size() < 4) {
+		return;
+	}
+	top = j[key][0].get<float>();
+	right = j[key][1].get<float>();
+	bottom = j[key][2].get<float>();
+	left = j[key][3].get<float>();
 }
 
 bool serializePage(entt::registry& reg, entt::entity e, ordered_json& j) {
@@ -84,45 +102,70 @@ bool serializePage(entt::registry& reg, entt::entity e, ordered_json& j) {
 		return false;
 	}
 	const auto& p = reg.get<ecs::CPage>(e);
-	j["name"] = p.name;
-	j["index"] = p.index;
-	j["unit"] = p.unit;
 	j["width"] = p.width;
 	j["height"] = p.height;
-	j["marginTop"] = p.marginTop;
-	j["marginRight"] = p.marginRight;
-	j["marginBottom"] = p.marginBottom;
-	j["marginLeft"] = p.marginLeft;
-	j["bleedTop"] = p.bleedTop;
-	j["bleedRight"] = p.bleedRight;
-	j["bleedBottom"] = p.bleedBottom;
-	j["bleedLeft"] = p.bleedLeft;
-	j["slugTop"] = p.slugTop;
-	j["slugRight"] = p.slugRight;
-	j["slugBottom"] = p.slugBottom;
-	j["slugLeft"] = p.slugLeft;
+	if (p.index != 0) {
+		j["index"] = p.index;
+	}
+	if (!p.unit.empty()) {
+		j["unit"] = p.unit;
+	}
+	writeEdges(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft);
+	writeEdges(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft);
+	writeEdges(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft);
 	return true;
 }
 
 bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	ecs::CPage p;
-	p.name = j.value("name", p.name);
+	// The anchor is a sibling component and may already have been read; the two
+	// codecs write the same struct, so neither may clear the other's field.
+	if (reg.all_of<ecs::CPage>(e)) {
+		p.originAnchor = reg.get<ecs::CPage>(e).originAnchor;
+	}
 	p.index = j.value("index", p.index);
 	p.unit = j.value("unit", p.unit);
 	p.width = j.value("width", p.width);
 	p.height = j.value("height", p.height);
-	p.marginTop = j.value("marginTop", p.marginTop);
-	p.marginRight = j.value("marginRight", p.marginRight);
-	p.marginBottom = j.value("marginBottom", p.marginBottom);
-	p.marginLeft = j.value("marginLeft", p.marginLeft);
-	p.bleedTop = j.value("bleedTop", p.bleedTop);
-	p.bleedRight = j.value("bleedRight", p.bleedRight);
-	p.bleedBottom = j.value("bleedBottom", p.bleedBottom);
-	p.bleedLeft = j.value("bleedLeft", p.bleedLeft);
-	p.slugTop = j.value("slugTop", p.slugTop);
-	p.slugRight = j.value("slugRight", p.slugRight);
-	p.slugBottom = j.value("slugBottom", p.slugBottom);
-	p.slugLeft = j.value("slugLeft", p.slugLeft);
+	readEdges(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft);
+	readEdges(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft);
+	readEdges(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft);
+	// Documents written before the anchor moved to its own component still name
+	// it here; the page schema has no such field, so this only reads.
+	if (j.contains("originAnchor") && j["originAnchor"].is_string()) {
+		p.originAnchor = originAnchorFromId(j["originAnchor"].get<std::string>());
+	}
+	reg.emplace_or_replace<ecs::CPage>(e, p);
+	return true;
+}
+
+/**
+ * @brief Page anchor as `rig.spatial.anchor`, the component that owns it.
+ * @details Written from the page struct rather than a second POD so the host
+ * keeps one anchor field. Top-left is what an absent component means, so it
+ * writes nothing — a page that never moved its origin stays clean on the wire.
+ */
+bool serializePageAnchor(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CPage>(e)) {
+		return false;
+	}
+	const auto& p = reg.get<ecs::CPage>(e);
+	if (p.originAnchor == 0) {
+		return false;
+	}
+	j["point"] = originAnchorId(p.originAnchor);
+	return true;
+}
+
+bool deserializePageAnchor(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	if (!j.contains("point") || !j["point"].is_string()) {
+		return false;
+	}
+	ecs::CPage p;
+	if (reg.all_of<ecs::CPage>(e)) {
+		p = reg.get<ecs::CPage>(e);
+	}
+	p.originAnchor = originAnchorFromId(j["point"].get<std::string>());
 	reg.emplace_or_replace<ecs::CPage>(e, p);
 	return true;
 }
@@ -341,7 +384,11 @@ bool serializeArc(entt::registry& reg, entt::entity e, ordered_json& j) {
 	const auto& s = reg.get<ecs::CArc>(e);
 	j["cx"] = s.cx;
 	j["cy"] = s.cy;
-	j["radius"] = s.radius;
+	j["rx"] = s.rx;
+	j["ry"] = s.ry;
+	if (s.isCircular()) {
+		j["radius"] = s.rx;
+	}
 	j["startAngleDegrees"] = s.startAngleDegrees;
 	j["endAngleDegrees"] = s.endAngleDegrees;
 	j["pie"] = s.pie;
@@ -352,11 +399,68 @@ bool deserializeArc(entt::registry& reg, entt::entity e, const ordered_json& j) 
 	ecs::CArc s;
 	s.cx = j.value("cx", s.cx);
 	s.cy = j.value("cy", s.cy);
-	s.radius = j.value("radius", s.radius);
+	if (j.contains("rx") || j.contains("ry")) {
+		s.rx = j.value("rx", j.value("radius", s.rx));
+		s.ry = j.value("ry", j.value("radius", s.ry));
+	} else {
+		s.setRadius(j.value("radius", s.rx));
+	}
 	s.startAngleDegrees = j.value("startAngleDegrees", s.startAngleDegrees);
 	s.endAngleDegrees = j.value("endAngleDegrees", s.endAngleDegrees);
 	s.pie = j.value("pie", s.pie);
 	reg.emplace_or_replace<ecs::CArc>(e, s);
+	return true;
+}
+
+bool serializeSpline(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CSpline>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CSpline>(e);
+	j["degree"] = s.degree;
+	j["closed"] = s.closed;
+	j["controlPoints"] = ordered_json::array();
+	for (const auto& p : s.controlPoints) {
+		j["controlPoints"].push_back({p.x, p.y});
+	}
+	j["knots"] = s.knots;
+	if (!s.weights.empty()) {
+		j["weights"] = s.weights;
+	}
+	if (!s.fitPoints.empty()) {
+		j["fitPoints"] = ordered_json::array();
+		for (const auto& p : s.fitPoints) {
+			j["fitPoints"].push_back({p.x, p.y});
+		}
+	}
+	return true;
+}
+
+bool deserializeSpline(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CSpline s;
+	s.degree = j.value("degree", s.degree);
+	s.closed = j.value("closed", s.closed);
+	if (j.contains("controlPoints") && j["controlPoints"].is_array()) {
+		for (const auto& p : j["controlPoints"]) {
+			s.controlPoints.push_back(vec2FromJson(p));
+		}
+	}
+	if (j.contains("knots") && j["knots"].is_array()) {
+		for (const auto& k : j["knots"]) {
+			s.knots.push_back(k.get<float>());
+		}
+	}
+	if (j.contains("weights") && j["weights"].is_array()) {
+		for (const auto& w : j["weights"]) {
+			s.weights.push_back(w.get<float>());
+		}
+	}
+	if (j.contains("fitPoints") && j["fitPoints"].is_array()) {
+		for (const auto& p : j["fitPoints"]) {
+			s.fitPoints.push_back(vec2FromJson(p));
+		}
+	}
+	reg.emplace_or_replace<ecs::CSpline>(e, std::move(s));
 	return true;
 }
 
@@ -429,7 +533,7 @@ bool serializeMesh(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!m.texcoords.empty()) {
 		ordered_json uvs = ordered_json::array();
 		for (const auto& t : m.texcoords) {
-			uvs.push_back(ordered_json::array({t.x, t.y}));
+			uvs.push_back(vec2ToJson(t));
 		}
 		j["texcoords"] = std::move(uvs);
 	}
@@ -449,7 +553,9 @@ bool deserializeMesh(entt::registry& reg, entt::entity e, const ordered_json& j)
 	}
 	if (j.contains("faceColors") && j["faceColors"].is_array()) {
 		for (const auto& c : j["faceColors"]) {
-			m.faceColors.push_back(vec4FromJson(c));
+			if (c.is_array() && c.size() >= 3) {
+				m.faceColors.push_back(rgbaFromJson(c));
+			}
 		}
 	}
 	if (j.contains("facePalette") && j["facePalette"].is_array()) {
@@ -457,9 +563,7 @@ bool deserializeMesh(entt::registry& reg, entt::entity e, const ordered_json& j)
 	}
 	if (j.contains("texcoords") && j["texcoords"].is_array()) {
 		for (const auto& t : j["texcoords"]) {
-			if (t.is_array() && t.size() >= 2) {
-				m.texcoords.push_back({t[0].get<float>(), t[1].get<float>()});
-			}
+			m.texcoords.push_back(vec2FromJson(t));
 		}
 	}
 	reg.emplace_or_replace<ecs::CMesh>(e, m);
@@ -504,7 +608,7 @@ bool serializeLight(entt::registry& reg, entt::entity e, ordered_json& j) {
 	const auto& l = reg.get<ecs::CLight>(e);
 	j["enabled"] = l.enabled;
 	j["type"] = (l.type == ecs::CLight::Type::Point) ? "point" : "directional";
-	j["rgb"] = ordered_json::array({l.colorR, l.colorG, l.colorB});
+	j["rgb"] = rgbToJson({l.colorR, l.colorG, l.colorB});
 	j["intensity"] = l.intensity;
 	j["ambient"] = l.ambient;
 	j["banded"] = l.banded;
@@ -518,10 +622,11 @@ bool deserializeLight(entt::registry& reg, entt::entity e, const ordered_json& j
 	l.type = (j.value("type", std::string("directional")) == "point")
 				 ? ecs::CLight::Type::Point
 				 : ecs::CLight::Type::Directional;
-	if (j.contains("rgb") && j["rgb"].is_array() && j["rgb"].size() >= 3) {
-		l.colorR = j["rgb"][0].get<float>();
-		l.colorG = j["rgb"][1].get<float>();
-		l.colorB = j["rgb"][2].get<float>();
+	if (j.contains("rgb")) {
+		const glm::vec3 rgb = rgbFromJson(j["rgb"], {l.colorR, l.colorG, l.colorB});
+		l.colorR = rgb.r;
+		l.colorG = rgb.g;
+		l.colorB = rgb.b;
 	}
 	l.intensity = j.value("intensity", l.intensity);
 	l.ambient = j.value("ambient", l.ambient);
@@ -556,24 +661,42 @@ bool serializePalette(entt::registry& reg, entt::entity e, ordered_json& j) {
 	}
 	const auto& p = reg.get<ecs::CPalette>(e);
 	ordered_json colors = ordered_json::array();
-	ordered_json next = ordered_json::array();
 	for (int i = 0; i < ecs::CPalette::kCount; ++i) {
 		colors.push_back(vec4ToJson(p.colors[static_cast<size_t>(i)]));
-		next.push_back(p.shadeNext[static_cast<size_t>(i)]);
 	}
 	j["colors"] = std::move(colors);
-	j["shadeNext"] = std::move(next);
 	return true;
 }
 
 bool deserializePalette(entt::registry& reg, entt::entity e, const ordered_json& j) {
-	ecs::CPalette p = ecs::CPalette::default16();
+	ecs::CPalette p = reg.all_of<ecs::CPalette>(e) ? reg.get<ecs::CPalette>(e)
+												  : ecs::CPalette::default16();
 	if (j.contains("colors") && j["colors"].is_array()) {
 		const size_t n = std::min(j["colors"].size(), static_cast<size_t>(ecs::CPalette::kCount));
 		for (size_t i = 0; i < n; ++i) {
 			p.colors[i] = vec4FromJson(j["colors"][i], p.colors[i]);
 		}
 	}
+	reg.emplace_or_replace<ecs::CPalette>(e, p);
+	return true;
+}
+
+bool serializePaletteShade(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CPalette>(e)) {
+		return false;
+	}
+	const auto& p = reg.get<ecs::CPalette>(e);
+	ordered_json next = ordered_json::array();
+	for (int i = 0; i < ecs::CPalette::kCount; ++i) {
+		next.push_back(p.shadeNext[static_cast<size_t>(i)]);
+	}
+	j["shadeNext"] = std::move(next);
+	return true;
+}
+
+bool deserializePaletteShade(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CPalette p = reg.all_of<ecs::CPalette>(e) ? reg.get<ecs::CPalette>(e)
+												  : ecs::CPalette::default16();
 	if (j.contains("shadeNext") && j["shadeNext"].is_array()) {
 		const size_t n =
 			std::min(j["shadeNext"].size(), static_cast<size_t>(ecs::CPalette::kCount));
@@ -675,8 +798,8 @@ bool serializeDrawStyle(entt::registry& reg, entt::entity e, ordered_json& j) {
 		return false;
 	}
 	const auto& d = reg.get<ecs::CDrawStyle>(e);
-	j["fillRgba"] = ordered_json::array({d.fillR, d.fillG, d.fillB, d.fillA});
-	j["strokeRgba"] = ordered_json::array({d.strokeR, d.strokeG, d.strokeB, d.strokeA});
+	j["fillRgba"] = colorToJson({d.fillR, d.fillG, d.fillB, d.fillA});
+	j["strokeRgba"] = colorToJson({d.strokeR, d.strokeG, d.strokeB, d.strokeA});
 	j["strokeWidth"] = d.strokeWidth;
 	j["hasFill"] = d.hasFill;
 	j["hasStroke"] = d.hasStroke;
@@ -687,17 +810,20 @@ bool serializeDrawStyle(entt::registry& reg, entt::entity e, ordered_json& j) {
 // instead of replacing it — whichever key is read second must not wipe the first.
 bool deserializeDrawStyle(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	auto& d = reg.get_or_emplace<ecs::CDrawStyle>(e);
-	if (j.contains("fillRgba") && j["fillRgba"].is_array() && j["fillRgba"].size() >= 4) {
-		d.fillR = j["fillRgba"][0].get<float>();
-		d.fillG = j["fillRgba"][1].get<float>();
-		d.fillB = j["fillRgba"][2].get<float>();
-		d.fillA = j["fillRgba"][3].get<float>();
+	if (j.contains("fillRgba")) {
+		const glm::vec4 fill = rgbaFromJson(j["fillRgba"], {d.fillR, d.fillG, d.fillB, d.fillA});
+		d.fillR = fill.r;
+		d.fillG = fill.g;
+		d.fillB = fill.b;
+		d.fillA = fill.a;
 	}
-	if (j.contains("strokeRgba") && j["strokeRgba"].is_array() && j["strokeRgba"].size() >= 4) {
-		d.strokeR = j["strokeRgba"][0].get<float>();
-		d.strokeG = j["strokeRgba"][1].get<float>();
-		d.strokeB = j["strokeRgba"][2].get<float>();
-		d.strokeA = j["strokeRgba"][3].get<float>();
+	if (j.contains("strokeRgba")) {
+		const glm::vec4 stroke =
+			rgbaFromJson(j["strokeRgba"], {d.strokeR, d.strokeG, d.strokeB, d.strokeA});
+		d.strokeR = stroke.r;
+		d.strokeG = stroke.g;
+		d.strokeB = stroke.b;
+		d.strokeA = stroke.a;
 	}
 	d.strokeWidth = j.value("strokeWidth", d.strokeWidth);
 	d.hasFill = j.value("hasFill", d.hasFill);
@@ -1010,17 +1136,23 @@ void registerCoreSerializers(ComponentSerializerRegistry& registry) {
 	addSerializer<ecs::CStar>(registry, "Star", "rig.geometry.star", serializeStar,
 							  deserializeStar);
 	addSerializer<ecs::CArc>(registry, "Arc", "rig.geometry.arc", serializeArc, deserializeArc);
-	addSerializer<ecs::CRing>(registry, "Ring", "rig.geometry.ring", serializeRing,
-							  deserializeRing);
+	addSerializer<ecs::CSpline>(registry, "Spline", "rig.geometry.spline", serializeSpline,
+								deserializeSpline);
+	addSerializer<ecs::CRing>(registry, "Ring", "rig.geometry.ring", serializeRing, deserializeRing);
 	addSerializer<ecs::CMesh>(registry, "Mesh", "rig.geometry.mesh", serializeMesh,
 							  deserializeMesh);
 
+	addSerializer<ecs::CPage>(registry, "Page", "rig.layout.page", serializePage, deserializePage);
+	// Same struct, second Contract component: the anchor is not a page field.
+	addSerializer<ecs::CPage>(registry, "PageAnchor", "rig.spatial.anchor", serializePageAnchor,
+							  deserializePageAnchor);
+	addSerializer<ecs::CPalette>(registry, "Palette", "rig.pixel.palette", serializePalette,
+								 deserializePalette);
+	addSerializer<ecs::CPalette>(registry, "PaletteShade", "x.rigkit.palette_shade",
+								 serializePaletteShade, deserializePaletteShade);
 	// No Contract schema covers these yet, so they travel as host extensions.
-	addSerializer<ecs::CPage>(registry, "Page", "x.rigkit.page", serializePage, deserializePage);
 	addSerializer<ecs::CGuide>(registry, "Guide", "x.rigkit.guide", serializeGuide,
 							   deserializeGuide);
-	addSerializer<ecs::CPalette>(registry, "Palette", "x.rigkit.palette", serializePalette,
-								 deserializePalette);
 	addSerializer<ecs::CIndexedAtlas>(registry, "IndexedAtlas", "x.rigkit.indexed_atlas",
 									  serializeIndexedAtlas, deserializeIndexedAtlas);
 	addSerializer<ecs::CFaceSelection>(registry, "FaceSelection", "x.rigkit.face_selection",
