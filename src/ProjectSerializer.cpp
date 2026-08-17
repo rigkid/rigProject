@@ -35,6 +35,16 @@ void syncEnvelopeFromProject(const ecs::CProject& doc, ordered_json& envelope) {
 	envelope["format_minor"] = doc.formatMinor;
 	envelope["activePageIndex"] = doc.activePageIndex;
 	envelope["defaultUnit"] = doc.defaultUnit;
+	envelope["colorSpace"] = doc.colorSpace.empty() ? "srgb" : doc.colorSpace;
+	if (!doc.pdfX.empty()) {
+		envelope["pdfX"] = doc.pdfX;
+	}
+	if (!doc.outputCondition.empty()) {
+		envelope["outputCondition"] = doc.outputCondition;
+	}
+	if (!doc.trapped.empty() && doc.trapped != "unknown") {
+		envelope["trapped"] = doc.trapped;
+	}
 	if (!doc.path.empty()) {
 		envelope["path"] = doc.path;
 	}
@@ -49,6 +59,10 @@ void applyEnvelopeToProject(ecs::CProject& doc, const ordered_json& envelope) {
 	doc.formatMinor = envelope.value("format_minor", doc.formatMinor);
 	doc.activePageIndex = envelope.value("activePageIndex", doc.activePageIndex);
 	doc.defaultUnit = envelope.value("defaultUnit", doc.defaultUnit);
+	doc.colorSpace = envelope.value("colorSpace", doc.colorSpace);
+	doc.pdfX = envelope.value("pdfX", doc.pdfX);
+	doc.outputCondition = envelope.value("outputCondition", doc.outputCondition);
+	doc.trapped = envelope.value("trapped", doc.trapped);
 	if (envelope.contains("path")) {
 		doc.path = envelope.value("path", doc.path);
 	}
@@ -212,6 +226,11 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	}
 
 	remapEntityReferences(ecs.registry(), idMap);
+	for (const auto& ser : m_registry.serializers()) {
+		if (ser.remapReferences) {
+			ser.remapReferences(ecs.registry(), idMap);
+		}
+	}
 
 	if (m_readRootExtension) {
 		m_readRootExtension(ecs, root);

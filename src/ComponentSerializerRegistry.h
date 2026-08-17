@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "EntityIdRemap.h"
 #include "ProjectJson.h"
 
 namespace rigkit {
@@ -25,6 +26,12 @@ struct ComponentSerializer {
 	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserialize;
 	std::function<bool(entt::registry&, entt::entity)> hasComponent;
 	std::function<void(entt::registry&, std::function<void(entt::entity)>)> forEachEntity;
+	/**
+	 * @brief Optional post-load rewrite of entity ids stored inside this POD.
+	 * @details Called once per codec after the core `CRelationship` remap. Packs
+	 * use this for domain parent/mask handles (e.g. pixel layers).
+	 */
+	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences;
 };
 
 /**

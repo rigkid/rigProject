@@ -8,6 +8,7 @@
 #include "CIndexedAtlas.h"
 #include "CLight.h"
 #include "CMesh.h"
+#include "MeshFaces.h"
 #include "CModBinding.h"
 #include "CModLfo.h"
 #include "CMusicClock.h"
@@ -24,6 +25,17 @@
 #include "CRelationship.h"
 #include "CRing.h"
 #include "CSpline.h"
+#include "CSpline3d.h"
+#include "CNurbsSurface.h"
+#include "CCadBox.h"
+#include "CCadCylinder.h"
+#include "CCadSphere.h"
+#include "CCadExtrude.h"
+#include "CCadRevolve.h"
+#include "CCadBoolean.h"
+#include "CCadFillet.h"
+#include "CCadChamfer.h"
+#include "CEdgeSelection.h"
 #include "CStar.h"
 #include "CTransform.h"
 #include "EntityIdRemap.h"
@@ -35,11 +47,11 @@ namespace rigkit {
 namespace project {
 namespace {
 
-/// `rig.spatial.anchor` ids for `CPage::originAnchor`. Same order as plotter
-/// OriginAnchor.h — the five cells a page can anchor to here.
-constexpr const char* kOriginAnchorIds[] = {"topLeft", "topRight", "bottomLeft", "bottomRight",
-											"center"};
-constexpr int kOriginAnchorIdCount = 5;
+/// `rig.spatial.anchor` ids for `CPage::originAnchor` — full 3×3 face.
+constexpr const char* kOriginAnchorIds[] = {
+	"topLeft",	   "topCenter",	  "topRight",	 "middleLeft",	 "center",
+	"middleRight", "bottomLeft", "bottomCenter", "bottomRight"};
+constexpr int kOriginAnchorIdCount = 9;
 
 const char* originAnchorId(int v) {
 	if (v >= 0 && v < kOriginAnchorIdCount) {
@@ -48,29 +60,12 @@ const char* originAnchorId(int v) {
 	return kOriginAnchorIds[0];
 }
 
-/**
- * @brief Read a `rig.spatial.anchor` cell into the five a page understands.
- * @details The Contract names nine cells; a page here anchors to a corner or
- * the middle. An edge cell keeps the side it names and falls to the nearer
- * corner, so an imported page lands on the same edge it was authored against.
- */
+/** @brief Read a `rig.spatial.anchor` cell id into the 9-cell page index. */
 int originAnchorFromId(const std::string& id) {
 	for (int i = 0; i < kOriginAnchorIdCount; ++i) {
 		if (id == kOriginAnchorIds[i]) {
 			return i;
 		}
-	}
-	if (id == "topCenter") {
-		return 0; // topLeft
-	}
-	if (id == "bottomCenter") {
-		return 2; // bottomLeft
-	}
-	if (id == "middleLeft") {
-		return 0; // topLeft
-	}
-	if (id == "middleRight") {
-		return 1; // topRight
 	}
 	return 0;
 }
@@ -464,6 +459,370 @@ bool deserializeSpline(entt::registry& reg, entt::entity e, const ordered_json& 
 	return true;
 }
 
+bool serializeSpline3d(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CSpline3d>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CSpline3d>(e);
+	j["degree"] = s.degree;
+	if (s.closed) {
+		j["closed"] = true;
+	}
+	j["controlPoints"] = ordered_json::array();
+	for (const auto& p : s.controlPoints) {
+		j["controlPoints"].push_back(vec3ToJson(p));
+	}
+	j["knots"] = s.knots;
+	if (!s.weights.empty()) {
+		j["weights"] = s.weights;
+	}
+	if (!s.fitPoints.empty()) {
+		j["fitPoints"] = ordered_json::array();
+		for (const auto& p : s.fitPoints) {
+			j["fitPoints"].push_back(vec3ToJson(p));
+		}
+	}
+	return true;
+}
+
+bool deserializeSpline3d(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CSpline3d s;
+	s.degree = j.value("degree", s.degree);
+	s.closed = j.value("closed", s.closed);
+	if (j.contains("controlPoints") && j["controlPoints"].is_array()) {
+		for (const auto& p : j["controlPoints"]) {
+			s.controlPoints.push_back(vec3FromJson(p));
+		}
+	}
+	if (j.contains("knots") && j["knots"].is_array()) {
+		for (const auto& k : j["knots"]) {
+			s.knots.push_back(k.get<float>());
+		}
+	}
+	if (j.contains("weights") && j["weights"].is_array()) {
+		for (const auto& w : j["weights"]) {
+			s.weights.push_back(w.get<float>());
+		}
+	}
+	if (j.contains("fitPoints") && j["fitPoints"].is_array()) {
+		for (const auto& p : j["fitPoints"]) {
+			s.fitPoints.push_back(vec3FromJson(p));
+		}
+	}
+	reg.emplace_or_replace<ecs::CSpline3d>(e, std::move(s));
+	return true;
+}
+
+bool serializeNurbsSurface(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CNurbsSurface>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CNurbsSurface>(e);
+	j["degreeU"] = s.degreeU;
+	j["degreeV"] = s.degreeV;
+	j["countU"] = s.countU;
+	j["countV"] = s.countV;
+	j["controlPoints"] = ordered_json::array();
+	for (const auto& p : s.controlPoints) {
+		j["controlPoints"].push_back(vec3ToJson(p));
+	}
+	j["knotsU"] = s.knotsU;
+	j["knotsV"] = s.knotsV;
+	if (!s.weights.empty()) {
+		j["weights"] = s.weights;
+	}
+	if (s.closedU) {
+		j["closedU"] = true;
+	}
+	if (s.closedV) {
+		j["closedV"] = true;
+	}
+	return true;
+}
+
+bool deserializeNurbsSurface(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CNurbsSurface s;
+	s.degreeU = j.value("degreeU", s.degreeU);
+	s.degreeV = j.value("degreeV", s.degreeV);
+	s.countU = j.value("countU", s.countU);
+	s.countV = j.value("countV", s.countV);
+	s.closedU = j.value("closedU", s.closedU);
+	s.closedV = j.value("closedV", s.closedV);
+	if (j.contains("controlPoints") && j["controlPoints"].is_array()) {
+		for (const auto& p : j["controlPoints"]) {
+			s.controlPoints.push_back(vec3FromJson(p));
+		}
+	}
+	if (j.contains("knotsU") && j["knotsU"].is_array()) {
+		for (const auto& k : j["knotsU"]) {
+			s.knotsU.push_back(k.get<float>());
+		}
+	}
+	if (j.contains("knotsV") && j["knotsV"].is_array()) {
+		for (const auto& k : j["knotsV"]) {
+			s.knotsV.push_back(k.get<float>());
+		}
+	}
+	if (j.contains("weights") && j["weights"].is_array()) {
+		for (const auto& w : j["weights"]) {
+			s.weights.push_back(w.get<float>());
+		}
+	}
+	reg.emplace_or_replace<ecs::CNurbsSurface>(e, std::move(s));
+	return true;
+}
+
+void writeMeshEdges(ordered_json& j, const std::vector<ecs::MeshEdge>& edges) {
+	if (edges.empty()) {
+		return;
+	}
+	j["edges"] = ordered_json::array();
+	for (const auto& e : edges) {
+		const ecs::MeshEdge n = ecs::meshEdge(e.a, e.b);
+		j["edges"].push_back(ordered_json{{"a", n.a}, {"b", n.b}});
+	}
+}
+
+void readMeshEdges(const ordered_json& j, std::vector<ecs::MeshEdge>& edges) {
+	edges.clear();
+	if (!j.contains("edges") || !j["edges"].is_array()) {
+		return;
+	}
+	for (const auto& item : j["edges"]) {
+		if (!item.is_object()) {
+			continue;
+		}
+		edges.push_back(ecs::meshEdge(item.value("a", 0u), item.value("b", 0u)));
+	}
+}
+
+bool serializeCadBox(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadBox>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadBox>(e);
+	j["sizeX"] = s.sizeX;
+	j["sizeY"] = s.sizeY;
+	j["sizeZ"] = s.sizeZ;
+	if (!s.center) {
+		j["center"] = false;
+	}
+	return true;
+}
+
+bool deserializeCadBox(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadBox s;
+	s.sizeX = j.value("sizeX", s.sizeX);
+	s.sizeY = j.value("sizeY", s.sizeY);
+	s.sizeZ = j.value("sizeZ", s.sizeZ);
+	s.center = j.value("center", s.center);
+	reg.emplace_or_replace<ecs::CCadBox>(e, s);
+	return true;
+}
+
+bool serializeCadCylinder(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadCylinder>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadCylinder>(e);
+	j["radius"] = s.radius;
+	j["height"] = s.height;
+	if (s.circularSegments >= 3) {
+		j["circularSegments"] = s.circularSegments;
+	}
+	if (!s.center) {
+		j["center"] = false;
+	}
+	return true;
+}
+
+bool deserializeCadCylinder(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadCylinder s;
+	s.radius = j.value("radius", s.radius);
+	s.height = j.value("height", s.height);
+	s.circularSegments = j.value("circularSegments", s.circularSegments);
+	s.center = j.value("center", s.center);
+	reg.emplace_or_replace<ecs::CCadCylinder>(e, s);
+	return true;
+}
+
+bool serializeCadSphere(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadSphere>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadSphere>(e);
+	j["radius"] = s.radius;
+	if (s.circularSegments >= 3) {
+		j["circularSegments"] = s.circularSegments;
+	}
+	return true;
+}
+
+bool deserializeCadSphere(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadSphere s;
+	s.radius = j.value("radius", s.radius);
+	s.circularSegments = j.value("circularSegments", s.circularSegments);
+	reg.emplace_or_replace<ecs::CCadSphere>(e, s);
+	return true;
+}
+
+bool serializeCadExtrude(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadExtrude>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadExtrude>(e);
+	j["profile"] = s.profile.empty() ? ordered_json(nullptr) : ordered_json(s.profile);
+	j["height"] = s.height;
+	if (s.nDivisions >= 1) {
+		j["nDivisions"] = s.nDivisions;
+	}
+	if (s.twistDegrees != 0.f) {
+		j["twistDegrees"] = s.twistDegrees;
+	}
+	if (s.scaleTop != 1.f) {
+		j["scaleTop"] = s.scaleTop;
+	}
+	return true;
+}
+
+bool deserializeCadExtrude(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadExtrude s;
+	if (j.contains("profile") && j["profile"].is_string()) {
+		s.profile = j["profile"].get<std::string>();
+	}
+	s.height = j.value("height", s.height);
+	s.nDivisions = j.value("nDivisions", s.nDivisions);
+	s.twistDegrees = j.value("twistDegrees", s.twistDegrees);
+	s.scaleTop = j.value("scaleTop", s.scaleTop);
+	reg.emplace_or_replace<ecs::CCadExtrude>(e, s);
+	return true;
+}
+
+bool serializeCadRevolve(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadRevolve>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadRevolve>(e);
+	j["profile"] = s.profile.empty() ? ordered_json(nullptr) : ordered_json(s.profile);
+	if (s.revolveDegrees != 360.f) {
+		j["revolveDegrees"] = s.revolveDegrees;
+	}
+	if (s.circularSegments >= 3) {
+		j["circularSegments"] = s.circularSegments;
+	}
+	return true;
+}
+
+bool deserializeCadRevolve(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadRevolve s;
+	if (j.contains("profile") && j["profile"].is_string()) {
+		s.profile = j["profile"].get<std::string>();
+	}
+	s.revolveDegrees = j.value("revolveDegrees", s.revolveDegrees);
+	s.circularSegments = j.value("circularSegments", s.circularSegments);
+	reg.emplace_or_replace<ecs::CCadRevolve>(e, s);
+	return true;
+}
+
+const char* cadBooleanOpName(ecs::CCadBoolean::Op op) {
+	switch (op) {
+	case ecs::CCadBoolean::Op::Union:
+		return "union";
+	case ecs::CCadBoolean::Op::Difference:
+		return "difference";
+	case ecs::CCadBoolean::Op::Intersection:
+		return "intersection";
+	}
+	return "difference";
+}
+
+ecs::CCadBoolean::Op cadBooleanOpFromName(const std::string& name) {
+	if (name == "union") {
+		return ecs::CCadBoolean::Op::Union;
+	}
+	if (name == "intersection") {
+		return ecs::CCadBoolean::Op::Intersection;
+	}
+	return ecs::CCadBoolean::Op::Difference;
+}
+
+bool serializeCadBoolean(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadBoolean>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadBoolean>(e);
+	j["op"] = cadBooleanOpName(s.op);
+	j["operands"] = ordered_json::array();
+	for (const auto& id : s.operands) {
+		j["operands"].push_back(id);
+	}
+	return true;
+}
+
+bool deserializeCadBoolean(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadBoolean s;
+	s.op = cadBooleanOpFromName(j.value("op", std::string("difference")));
+	if (j.contains("operands") && j["operands"].is_array()) {
+		for (const auto& id : j["operands"]) {
+			if (id.is_string()) {
+				s.operands.push_back(id.get<std::string>());
+			}
+		}
+	}
+	reg.emplace_or_replace<ecs::CCadBoolean>(e, std::move(s));
+	return true;
+}
+
+bool serializeCadFillet(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadFillet>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadFillet>(e);
+	j["radius"] = s.radius;
+	if (s.allEdges) {
+		j["allEdges"] = true;
+	} else {
+		writeMeshEdges(j, s.edges);
+	}
+	return true;
+}
+
+bool deserializeCadFillet(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadFillet s;
+	s.radius = j.value("radius", s.radius);
+	s.allEdges = j.value("allEdges", s.allEdges);
+	if (!s.allEdges) {
+		readMeshEdges(j, s.edges);
+	}
+	reg.emplace_or_replace<ecs::CCadFillet>(e, std::move(s));
+	return true;
+}
+
+bool serializeCadChamfer(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadChamfer>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadChamfer>(e);
+	j["distance"] = s.distance;
+	if (s.allEdges) {
+		j["allEdges"] = true;
+	} else {
+		writeMeshEdges(j, s.edges);
+	}
+	return true;
+}
+
+bool deserializeCadChamfer(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadChamfer s;
+	s.distance = j.value("distance", s.distance);
+	s.allEdges = j.value("allEdges", s.allEdges);
+	if (!s.allEdges) {
+		readMeshEdges(j, s.edges);
+	}
+	reg.emplace_or_replace<ecs::CCadChamfer>(e, std::move(s));
+	return true;
+}
+
 bool serializeRing(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!reg.all_of<ecs::CRing>(e)) {
 		return false;
@@ -520,6 +879,10 @@ bool serializeMesh(entt::registry& reg, entt::entity e, ordered_json& j) {
 	}
 	j["positions"] = std::move(positions);
 	j["indices"] = m.indices;
+	if (!m.loops.empty()) {
+		j["loops"] = m.loops;
+		j["loopSizes"] = m.loopSizes;
+	}
 	if (!m.faceColors.empty()) {
 		ordered_json colors = ordered_json::array();
 		for (const auto& c : m.faceColors) {
@@ -551,6 +914,12 @@ bool deserializeMesh(entt::registry& reg, entt::entity e, const ordered_json& j)
 	if (j.contains("indices") && j["indices"].is_array()) {
 		m.indices = j["indices"].get<std::vector<uint32_t>>();
 	}
+	if (j.contains("loops") && j["loops"].is_array()) {
+		m.loops = j["loops"].get<std::vector<uint32_t>>();
+	}
+	if (j.contains("loopSizes") && j["loopSizes"].is_array()) {
+		m.loopSizes = j["loopSizes"].get<std::vector<uint32_t>>();
+	}
 	if (j.contains("faceColors") && j["faceColors"].is_array()) {
 		for (const auto& c : j["faceColors"]) {
 			if (c.is_array() && c.size() >= 3) {
@@ -565,6 +934,9 @@ bool deserializeMesh(entt::registry& reg, entt::entity e, const ordered_json& j)
 		for (const auto& t : j["texcoords"]) {
 			m.texcoords.push_back(vec2FromJson(t));
 		}
+	}
+	if (!m.loopSizes.empty()) {
+		ecs::meshTriangulate(m);
 	}
 	reg.emplace_or_replace<ecs::CMesh>(e, m);
 	return true;
@@ -746,6 +1118,21 @@ bool deserializeFaceSelection(entt::registry& reg, entt::entity e, const ordered
 		s.faces = j["faces"].get<std::vector<uint32_t>>();
 	}
 	reg.emplace_or_replace<ecs::CFaceSelection>(e, s);
+	return true;
+}
+
+bool serializeEdgeSelection(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CEdgeSelection>(e)) {
+		return false;
+	}
+	writeMeshEdges(j, reg.get<ecs::CEdgeSelection>(e).edges);
+	return true;
+}
+
+bool deserializeEdgeSelection(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CEdgeSelection s;
+	readMeshEdges(j, s.edges);
+	reg.emplace_or_replace<ecs::CEdgeSelection>(e, std::move(s));
 	return true;
 }
 
@@ -1138,6 +1525,25 @@ void registerCoreSerializers(ComponentSerializerRegistry& registry) {
 	addSerializer<ecs::CArc>(registry, "Arc", "rig.geometry.arc", serializeArc, deserializeArc);
 	addSerializer<ecs::CSpline>(registry, "Spline", "rig.geometry.spline", serializeSpline,
 								deserializeSpline);
+	addSerializer<ecs::CSpline3d>(registry, "Spline3d", "rig.geometry.spline3d", serializeSpline3d,
+								  deserializeSpline3d);
+	addSerializer<ecs::CNurbsSurface>(registry, "NurbsSurface", "rig.geometry.nurbs_surface",
+									  serializeNurbsSurface, deserializeNurbsSurface);
+	addSerializer<ecs::CCadBox>(registry, "CadBox", "rig.cad.box", serializeCadBox, deserializeCadBox);
+	addSerializer<ecs::CCadCylinder>(registry, "CadCylinder", "rig.cad.cylinder", serializeCadCylinder,
+									deserializeCadCylinder);
+	addSerializer<ecs::CCadSphere>(registry, "CadSphere", "rig.cad.sphere", serializeCadSphere,
+								   deserializeCadSphere);
+	addSerializer<ecs::CCadExtrude>(registry, "CadExtrude", "rig.cad.extrude", serializeCadExtrude,
+									deserializeCadExtrude);
+	addSerializer<ecs::CCadRevolve>(registry, "CadRevolve", "rig.cad.revolve", serializeCadRevolve,
+									deserializeCadRevolve);
+	addSerializer<ecs::CCadBoolean>(registry, "CadBoolean", "rig.cad.boolean", serializeCadBoolean,
+									deserializeCadBoolean);
+	addSerializer<ecs::CCadFillet>(registry, "CadFillet", "rig.cad.fillet", serializeCadFillet,
+								   deserializeCadFillet);
+	addSerializer<ecs::CCadChamfer>(registry, "CadChamfer", "rig.cad.chamfer", serializeCadChamfer,
+									deserializeCadChamfer);
 	addSerializer<ecs::CRing>(registry, "Ring", "rig.geometry.ring", serializeRing, deserializeRing);
 	addSerializer<ecs::CMesh>(registry, "Mesh", "rig.geometry.mesh", serializeMesh,
 							  deserializeMesh);
@@ -1157,6 +1563,8 @@ void registerCoreSerializers(ComponentSerializerRegistry& registry) {
 									  serializeIndexedAtlas, deserializeIndexedAtlas);
 	addSerializer<ecs::CFaceSelection>(registry, "FaceSelection", "x.rigkit.face_selection",
 									   serializeFaceSelection, deserializeFaceSelection);
+	addSerializer<ecs::CEdgeSelection>(registry, "EdgeSelection", "x.rigkit.edge_selection",
+									   serializeEdgeSelection, deserializeEdgeSelection);
 }
 
 } // namespace project

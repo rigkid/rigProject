@@ -14,6 +14,16 @@
 
 #include "CArc.h"
 #include "CSpline.h"
+#include "CSpline3d.h"
+#include "CNurbsSurface.h"
+#include "CCadBox.h"
+#include "CCadCylinder.h"
+#include "CCadSphere.h"
+#include "CCadExtrude.h"
+#include "CCadRevolve.h"
+#include "CCadBoolean.h"
+#include "CCadFillet.h"
+#include "CCadChamfer.h"
 #include "CCamera.h"
 #include "CCode.h"
 #include "CDrawStyle.h"
@@ -21,6 +31,7 @@
 #include "CLight.h"
 #include "CLine.h"
 #include "CMesh.h"
+#include "MeshFaces.h"
 #include "CModBinding.h"
 #include "CModLfo.h"
 #include "CTween.h"
@@ -180,12 +191,27 @@ rigkit::ecs::CMesh meshFromContract(const json& meshJson) {
 			mesh.indices.push_back(i.get<uint32_t>());
 		}
 	}
+	if (meshJson.contains("loops") && meshJson["loops"].is_array()) {
+		for (const auto& i : meshJson["loops"]) {
+			mesh.loops.push_back(i.get<uint32_t>());
+		}
+	}
+	if (meshJson.contains("loopSizes") && meshJson["loopSizes"].is_array()) {
+		for (const auto& i : meshJson["loopSizes"]) {
+			mesh.loopSizes.push_back(i.get<uint32_t>());
+		}
+	}
 	if (meshJson.contains("faceColors") && meshJson["faceColors"].is_array()) {
 		for (const auto& c : meshJson["faceColors"]) {
 			if (c.is_array() && c.size() >= 3) {
 				mesh.faceColors.push_back(rgbaFromJson(c));
 			}
 		}
+	}
+	if (!mesh.loopSizes.empty()) {
+		rigkit::ecs::meshTriangulate(mesh);
+	} else {
+		rigkit::ecs::meshFinishFaces(mesh);
 	}
 	return mesh;
 }
@@ -209,9 +235,19 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.geometry.star",
 	"rig.geometry.arc",
 	"rig.geometry.spline",
+	"rig.geometry.spline3d",
+	"rig.geometry.nurbs_surface",
 	"rig.geometry.ring",
 	"rig.geometry.path",
 	"rig.geometry.mesh",
+	"rig.cad.box",
+	"rig.cad.cylinder",
+	"rig.cad.sphere",
+	"rig.cad.extrude",
+	"rig.cad.revolve",
+	"rig.cad.boolean",
+	"rig.cad.fillet",
+	"rig.cad.chamfer",
 	"rig.mod.lfo",
 	"rig.mod.binding",
 	"rig.anim.tween",
@@ -232,12 +268,182 @@ const std::unordered_set<std::string> kKnown = {
 /// Any geometry schema at all — the paint-only fallback must not fire when the
 /// entity already carries something drawable.
 bool hasGeometry(const json& comps) {
-	for (const auto& key : kKnown) {
-		if (key.rfind("rig.geometry.", 0) == 0 && comps.contains(key)) {
+	for (auto it = comps.begin(); it != comps.end(); ++it) {
+		if (it.key().rfind("rig.geometry.", 0) == 0 || it.key().rfind("rig.cad.", 0) == 0) {
 			return true;
 		}
 	}
 	return false;
+}
+
+void readContractEdges(const json& j, std::vector<rigkit::ecs::MeshEdge>& edges) {
+	edges.clear();
+	if (!j.contains("edges") || !j["edges"].is_array()) {
+		return;
+	}
+	for (const auto& item : j["edges"]) {
+		if (item.is_object()) {
+			edges.push_back(rigkit::ecs::meshEdge(item.value("a", 0u), item.value("b", 0u)));
+		}
+	}
+}
+
+bool importCadAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& comps) {
+	bool wrote = false;
+	if (comps.contains("rig.geometry.spline3d")) {
+		const auto& sp = comps["rig.geometry.spline3d"];
+		rigkit::ecs::CSpline3d shape;
+		shape.degree = sp.value("degree", 3);
+		shape.closed = sp.value("closed", false);
+		if (sp.contains("controlPoints") && sp["controlPoints"].is_array()) {
+			for (const auto& p : sp["controlPoints"]) {
+				shape.controlPoints.push_back(vec3FromJson(p));
+			}
+		}
+		if (sp.contains("knots") && sp["knots"].is_array()) {
+			for (const auto& k : sp["knots"]) {
+				shape.knots.push_back(k.get<float>());
+			}
+		}
+		if (sp.contains("weights") && sp["weights"].is_array()) {
+			for (const auto& w : sp["weights"]) {
+				shape.weights.push_back(w.get<float>());
+			}
+		}
+		if (sp.contains("fitPoints") && sp["fitPoints"].is_array()) {
+			for (const auto& p : sp["fitPoints"]) {
+				shape.fitPoints.push_back(vec3FromJson(p));
+			}
+		}
+		ecs.addComponent(entity, std::move(shape));
+		wrote = true;
+	}
+	if (comps.contains("rig.geometry.nurbs_surface")) {
+		const auto& n = comps["rig.geometry.nurbs_surface"];
+		rigkit::ecs::CNurbsSurface s;
+		s.degreeU = n.value("degreeU", 3);
+		s.degreeV = n.value("degreeV", 3);
+		s.countU = n.value("countU", 0);
+		s.countV = n.value("countV", 0);
+		s.closedU = n.value("closedU", false);
+		s.closedV = n.value("closedV", false);
+		if (n.contains("controlPoints") && n["controlPoints"].is_array()) {
+			for (const auto& p : n["controlPoints"]) {
+				s.controlPoints.push_back(vec3FromJson(p));
+			}
+		}
+		if (n.contains("knotsU") && n["knotsU"].is_array()) {
+			for (const auto& k : n["knotsU"]) {
+				s.knotsU.push_back(k.get<float>());
+			}
+		}
+		if (n.contains("knotsV") && n["knotsV"].is_array()) {
+			for (const auto& k : n["knotsV"]) {
+				s.knotsV.push_back(k.get<float>());
+			}
+		}
+		if (n.contains("weights") && n["weights"].is_array()) {
+			for (const auto& w : n["weights"]) {
+				s.weights.push_back(w.get<float>());
+			}
+		}
+		ecs.addComponent(entity, std::move(s));
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.box")) {
+		const auto& b = comps["rig.cad.box"];
+		rigkit::ecs::CCadBox s;
+		s.sizeX = b.value("sizeX", 1.f);
+		s.sizeY = b.value("sizeY", 1.f);
+		s.sizeZ = b.value("sizeZ", 1.f);
+		s.center = b.value("center", true);
+		ecs.addComponent(entity, s);
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.cylinder")) {
+		const auto& c = comps["rig.cad.cylinder"];
+		rigkit::ecs::CCadCylinder s;
+		s.radius = c.value("radius", 1.f);
+		s.height = c.value("height", 1.f);
+		s.circularSegments = c.value("circularSegments", 0);
+		s.center = c.value("center", true);
+		ecs.addComponent(entity, s);
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.sphere")) {
+		const auto& c = comps["rig.cad.sphere"];
+		rigkit::ecs::CCadSphere s;
+		s.radius = c.value("radius", 1.f);
+		s.circularSegments = c.value("circularSegments", 0);
+		ecs.addComponent(entity, s);
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.extrude")) {
+		const auto& x = comps["rig.cad.extrude"];
+		rigkit::ecs::CCadExtrude s;
+		if (x.contains("profile") && x["profile"].is_string()) {
+			s.profile = x["profile"].get<std::string>();
+		}
+		s.height = x.value("height", 1.f);
+		s.nDivisions = x.value("nDivisions", 0);
+		s.twistDegrees = x.value("twistDegrees", 0.f);
+		s.scaleTop = x.value("scaleTop", 1.f);
+		ecs.addComponent(entity, s);
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.revolve")) {
+		const auto& r = comps["rig.cad.revolve"];
+		rigkit::ecs::CCadRevolve s;
+		if (r.contains("profile") && r["profile"].is_string()) {
+			s.profile = r["profile"].get<std::string>();
+		}
+		s.revolveDegrees = r.value("revolveDegrees", 360.f);
+		s.circularSegments = r.value("circularSegments", 0);
+		ecs.addComponent(entity, s);
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.boolean")) {
+		const auto& b = comps["rig.cad.boolean"];
+		rigkit::ecs::CCadBoolean s;
+		const std::string op = b.value("op", std::string("difference"));
+		if (op == "union") {
+			s.op = rigkit::ecs::CCadBoolean::Op::Union;
+		} else if (op == "intersection") {
+			s.op = rigkit::ecs::CCadBoolean::Op::Intersection;
+		} else {
+			s.op = rigkit::ecs::CCadBoolean::Op::Difference;
+		}
+		if (b.contains("operands") && b["operands"].is_array()) {
+			for (const auto& id : b["operands"]) {
+				if (id.is_string()) {
+					s.operands.push_back(id.get<std::string>());
+				}
+			}
+		}
+		ecs.addComponent(entity, std::move(s));
+		wrote = true;
+	}
+	if (comps.contains("rig.cad.fillet")) {
+		const auto& f = comps["rig.cad.fillet"];
+		rigkit::ecs::CCadFillet s;
+		s.radius = f.value("radius", 1.f);
+		s.allEdges = f.value("allEdges", false);
+		if (!s.allEdges) {
+			readContractEdges(f, s.edges);
+		}
+		ecs.addComponent(entity, std::move(s));
+	}
+	if (comps.contains("rig.cad.chamfer")) {
+		const auto& c = comps["rig.cad.chamfer"];
+		rigkit::ecs::CCadChamfer s;
+		s.distance = c.value("distance", 1.f);
+		s.allEdges = c.value("allEdges", false);
+		if (!s.allEdges) {
+			readContractEdges(c, s.edges);
+		}
+		ecs.addComponent(entity, std::move(s));
+	}
+	return wrote;
 }
 
 void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
@@ -255,22 +461,17 @@ void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
 	transform.rotation = glm::normalize(glm::quat_cast(glm::mat3(xAxis, yAxis, zAxis)));
 }
 
-/// Nine Contract cells onto the five a page anchors to; see CoreSerializers.
+/// Nine Contract cells onto `CPage::originAnchor` (same order as CoreSerializers).
 int originAnchorFromId(const std::string& id) {
-	static const char* const kIds[] = {"topLeft", "topRight", "bottomLeft", "bottomRight",
-									   "center"};
-	for (int i = 0; i < 5; ++i) {
+	static const char* const kIds[] = {
+		"topLeft",	   "topCenter",	  "topRight",	 "middleLeft",	 "center",
+		"middleRight", "bottomLeft", "bottomCenter", "bottomRight"};
+	for (int i = 0; i < 9; ++i) {
 		if (id == kIds[i]) {
 			return i;
 		}
 	}
-	if (id == "bottomCenter") {
-		return 2;
-	}
-	if (id == "middleRight") {
-		return 1;
-	}
-	return 0; // topLeft, topCenter, middleLeft
+	return 0;
 }
 
 void readPageEdges(const json& j, const char* key, float& top, float& right, float& bottom,
@@ -834,6 +1035,10 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			wroteGeometry = true;
 		}
 
+		if (importCadAndNurbs(ecs, entity, comps)) {
+			wroteGeometry = true;
+		}
+
 		if (wroteGeometry) {
 			ecs.addComponent(entity, style);
 			++result.geometryCount;
@@ -868,6 +1073,17 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 	}
 	for (auto e : ecs.view<rigkit::ecs::CTween>()) {
 		remapEntityKey(ecs.getComponent<rigkit::ecs::CTween>(e).target);
+	}
+	for (auto e : ecs.view<rigkit::ecs::CCadBoolean>()) {
+		for (auto& id : ecs.getComponent<rigkit::ecs::CCadBoolean>(e).operands) {
+			remapEntityKey(id);
+		}
+	}
+	for (auto e : ecs.view<rigkit::ecs::CCadExtrude>()) {
+		remapEntityKey(ecs.getComponent<rigkit::ecs::CCadExtrude>(e).profile);
+	}
+	for (auto e : ecs.view<rigkit::ecs::CCadRevolve>()) {
+		remapEntityKey(ecs.getComponent<rigkit::ecs::CCadRevolve>(e).profile);
 	}
 
 	// Contract docs often leave camera rotation as identity; host view is local -Z.

@@ -10,7 +10,9 @@ namespace ecs {
 /**
  * @brief Project envelope — data only.
  * @details Singleton metadata entity. Serialized into the root `project`
- * object, not as a normal entity component blob.
+ * object (and Contract `document` keys), not as a normal entity component blob.
+ * `colorSpace` speaks `document.colorSpace` (default `srgb`).
+ * `pdfX` / `outputCondition` / `trapped` / `outputProfile` drive PDF/X emit.
  */
 struct CProject {
 	std::string title = "Untitled";
@@ -22,6 +24,12 @@ struct CProject {
 	int formatMinor = 0;
 	int activePageIndex = 0;
 	std::string defaultUnit = "px"; // px | mm | in
+	std::string colorSpace = "srgb"; ///< Speaks document.colorSpace; rgba/rgb meaning
+	std::string pdfX; ///< e.g. PDF/X-4; empty = not PDF/X
+	std::string outputCondition; ///< OutputConditionIdentifier (FOGRA39, …)
+	std::string outputRegistry = "http://www.color.org";
+	std::string outputProfile; ///< Host path to ICC for DestOutputProfile
+	std::string trapped = "unknown"; ///< unknown | true | false
 	bool dirty = false;
 
 	std::vector<sProp> GetProperties() {
@@ -34,7 +42,13 @@ struct CProject {
 				{6, "Format Minor", EPT_INT, &formatMinor},
 				{7, "Active Page", EPT_INT, &activePageIndex},
 				{8, "Default Unit", EPT_STRING, &defaultUnit},
-				{9, "Dirty", EPT_BOOL, &dirty}};
+				{9, "Color Space", EPT_STRING, &colorSpace},
+				{10, "PDF/X", EPT_STRING, &pdfX},
+				{11, "Output Condition", EPT_STRING, &outputCondition},
+				{12, "Output Registry", EPT_STRING, &outputRegistry},
+				{13, "Output Profile", EPT_STRING, &outputProfile},
+				{14, "Trapped", EPT_STRING, &trapped},
+				{15, "Dirty", EPT_BOOL, &dirty}};
 	}
 };
 
