@@ -39,6 +39,8 @@
 #include "CMusicTransport.h"
 #include "CPage.h"
 #include "CPalette.h"
+#include "CPath.h"
+#include "ProjectJson.h"
 #include "CPolygon.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
@@ -263,6 +265,13 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.media.code",
 	"rig.layout.page",
 	"rig.pixel.palette",
+	"rig.media.text",
+	"rig.media.asset_ref",
+	"rig.anim.curve",
+	"x.rigkit.layer_visible",
+	"x.rigkit.stroke_style",
+	"x.rigkit.light_shading",
+	"x.rigkit.palette_shade",
 };
 
 /// Any geometry schema at all — the paint-only fallback must not fire when the
@@ -461,7 +470,7 @@ void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
 	transform.rotation = glm::normalize(glm::quat_cast(glm::mat3(xAxis, yAxis, zAxis)));
 }
 
-/// Nine Contract cells onto `CPage::originAnchor` (same order as CoreSerializers).
+/// Nine Contract cells onto `CPage::originAnchor` (same order as page codecs).
 int originAnchorFromId(const std::string& id) {
 	static const char* const kIds[] = {
 		"topLeft",	   "topCenter",	  "topRight",	 "middleLeft",	 "center",
@@ -516,10 +525,9 @@ entt::entity resolveEntity(const ContractImportResult& doc, const std::string& e
 	return it->second;
 }
 
-} // namespace
-
-ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& jsonText,
-										const std::string& sourceLabel) {
+ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string& jsonText,
+											const std::string& sourceLabel,
+											const ComponentSerializerRegistry* codecs) {
 	ContractImportResult result;
 	json root;
 	try {
@@ -572,6 +580,7 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 		}
 		++result.entityCount;
 
+		if (!codecs) {
 		if (comps.contains("rig.mod.lfo")) {
 			const auto& lfo = comps["rig.mod.lfo"];
 			rigkit::ecs::CModLfo mod;
@@ -681,6 +690,7 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			}
 			ecs.addComponent(entity, palette);
 		}
+		} // !codecs — POD blobs come from applyDeserializers when a registry is passed
 
 		if (comps.contains("rig.ui.panel")) {
 			const auto& p = comps["rig.ui.panel"];
@@ -755,6 +765,81 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 			act.actionId = a.value("actionId", "");
 			act.enabled = a.value("enabled", true);
 			result.actions.push_back(act);
+		}
+
+		if (codecs) {
+			ordered_json blob = comps;
+			codecs->applyDeserializers(ecs.registry(), entity, blob,
+									   {"rig.spatial.relationship"});
+			if (ecs.hasComponent<rigkit::ecs::CPage>(entity)) {
+				ecs.getComponent<rigkit::ecs::CPage>(entity).name = name;
+			}
+			if (!ecs.hasComponent<rigkit::ecs::CTransform>(entity)) {
+				rigkit::ecs::CTransform transform;
+				applyTransform(transform, comps);
+				ecs.addComponent(entity, transform);
+			}
+			if (comps.contains("rig.spatial.relationship")) {
+				const auto& rel = comps["rig.spatial.relationship"];
+				if (rel.contains("parent") && rel["parent"].is_string()) {
+					const auto parentId = rel["parent"].get<std::string>();
+					if (!parentId.empty()) {
+						pendingParents.emplace_back(entity, parentId);
+					}
+				}
+			}
+			if (comps.contains("rig.media.code") &&
+				!ecs.hasComponent<rigkit::ecs::CCode>(entity)) {
+				const auto& code = comps["rig.media.code"];
+				rigkit::ecs::CCode buffer;
+				buffer.name = name;
+				buffer.text = code.value("text", "");
+				buffer.language = code.value("language", "");
+				buffer.readOnly = code.value("readOnly", false);
+				ecs.addComponent(entity, buffer);
+			}
+
+			auto style = styleFrom(comps);
+			applyMaterialAlbedo(style, comps);
+			if (comps.contains("rig.paint.solid") && !hasGeometry(comps)) {
+				const auto& solid = comps["rig.paint.solid"];
+				rigkit::ecs::CEllipse shape;
+				shape.rx = 80.f;
+				shape.ry = 80.f;
+				ecs.addComponent(entity, shape);
+				if (solid.contains("rgba") && solid["rgba"].is_array() &&
+					solid["rgba"].size() >= 3) {
+					const glm::vec4 rgba = rgbaFromJson(solid["rgba"]);
+					style.hasFill = true;
+					style.fillR = rgba.r;
+					style.fillG = rgba.g;
+					style.fillB = rgba.b;
+					style.fillA = rgba.a;
+					style.hasStroke = false;
+				}
+				if (!comps.contains("rig.spatial.transform")) {
+					auto& xf = ecs.getComponent<rigkit::ecs::CTransform>(entity);
+					xf.position = {320.f + static_cast<float>(result.geometryCount) * 200.f, 280.f,
+								   0.f};
+				}
+				ecs.addComponent(entity, style);
+				++result.geometryCount;
+				result.notes.push_back(id + ": paint.solid presented as LED ellipse");
+			} else if (hasGeometry(comps)) {
+				if (comps.contains("rig.render.material")) {
+					auto& d = ecs.registry().get_or_emplace<rigkit::ecs::CDrawStyle>(entity);
+					d = style;
+				}
+				++result.geometryCount;
+			}
+			if (ecs.hasComponent<rigkit::ecs::CLight>(entity)) {
+				auto& L = ecs.getComponent<rigkit::ecs::CLight>(entity);
+				if (L.type == rigkit::ecs::CLight::Type::Directional) {
+					auto& xf = ecs.getComponent<rigkit::ecs::CTransform>(entity);
+					aimDirectionalAtOrigin(xf);
+				}
+			}
+			continue;
 		}
 
 		rigkit::ecs::CTransform transform;
@@ -1180,6 +1265,31 @@ ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& js
 					 result.panels.size(), result.controls.size(), result.actions.size());
 	}
 	return result;
+}
+
+} // namespace
+
+ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& jsonText,
+										const std::string& sourceLabel) {
+	return importContractJsonImpl(ecs, jsonText, sourceLabel, nullptr);
+}
+
+ContractImportResult importContractJson(rigkit::MEcs& ecs, const std::string& jsonText,
+										const std::string& sourceLabel,
+										const ComponentSerializerRegistry& codecs) {
+	return importContractJsonImpl(ecs, jsonText, sourceLabel, &codecs);
+}
+
+ContractImportResult importContractFile(rigkit::MEcs& ecs, const std::string& path,
+										const ComponentSerializerRegistry& codecs) {
+	ContractImportResult result;
+	std::string error;
+	json root = loadFile(path, error);
+	if (!error.empty() || root.is_null() || root.empty()) {
+		result.error = error.empty() ? "empty or invalid JSON" : error;
+		return result;
+	}
+	return importContractJson(ecs, root.dump(), path, codecs);
 }
 
 std::optional<float> contractGetFloat(rigkit::MEcs& ecs, const ContractImportResult& doc,

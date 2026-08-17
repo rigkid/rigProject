@@ -47,6 +47,15 @@ class ComponentSerializerRegistry {
 	/// Union of entities that carry any registered serializable component.
 	std::vector<entt::entity> collectEntities(entt::registry& reg) const;
 
+	/**
+	 * @brief Run every registered deserialize whose schemaId is a key in @p components.
+	 * @details Used by Contract import and any other path that already has a
+	 * components object. Returns how many codecs applied. Skips schema ids in
+	 * @p skipSchemaIds (Contract-specific handling, e.g. relationship by doc id).
+	 */
+	int applyDeserializers(entt::registry& reg, entt::entity entity, const ordered_json& components,
+						   const std::vector<std::string>& skipSchemaIds = {}) const;
+
   private:
 	std::vector<ComponentSerializer> m_serializers;
 };

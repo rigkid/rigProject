@@ -9,6 +9,7 @@
 #include <entt/entt.hpp>
 
 #include "core/U_core.h"
+#include "ComponentSerializerRegistry.h"
 
 namespace rigkit {
 namespace project {
@@ -102,8 +103,21 @@ bool contractSetRgba(MEcs& ecs, const ContractImportResult& doc, const std::stri
 bool contractRunAction(MEcs& ecs, const ContractImportResult& doc, const std::string& actionId);
 
 ContractImportResult importContractFile(MEcs& ecs, const std::string& path);
+ContractImportResult importContractFile(MEcs& ecs, const std::string& path,
+										const ComponentSerializerRegistry& codecs);
+
+/** @brief Import without a codec table (hand-written fallback). Prefer the codecs overload. */
 ContractImportResult importContractJson(MEcs& ecs, const std::string& jsonText,
 										const std::string& sourceLabel = {});
+
+/**
+ * @brief Import using registered document codecs for component blobs.
+ * @details Relationship still remaps by Contract document id (not `eN` handles).
+ * UI layout rows, paint.solid present fallback, and material→fill stay special.
+ */
+ContractImportResult importContractJson(MEcs& ecs, const std::string& jsonText,
+										const std::string& sourceLabel,
+										const ComponentSerializerRegistry& codecs);
 
 } // namespace project
 } // namespace rigkit

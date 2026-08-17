@@ -16,8 +16,9 @@ Contract JSON is the only `.rig` dialect: what this pack writes is what RigViewe
 - Root shape: `{ "rig": "<contract version>", "document": {...}, "entities": [...] }`
 - Entity shape: `{ "id": "e12", "components": { "rig.spatial.transform": {...} } }` — the name rides in `rig.meta.named`
 - Every codec carries a schema id: `rig.*` where the Contract defines the shape, `x.<vendor>.*` for host-only data. Registration refuses a codec without one, so nothing reaches a file unlabelled.
+- **This pack walks codecs; it does not own every codec.** Envelope + `CPage` / page-anchor live here. Portable PODs register from the owning pack (`rigComponent::setup` → `registerComponentSerializers`, plot packs / apps → `registerSerializer`). Use `project::addSerializer<T>(...)` instead of copying the registry glue.
 - Skips: Selection (session), Canvas/Texture (non-portable), document metadata entity in `entities[]`
-- Packs can `registerSerializer` / set root extension writer/reader for domain envelopes
+- Optional root extension writer/reader for domain envelopes (e.g. plotter)
 
 ### File extension
 
@@ -39,13 +40,12 @@ Reads [RigWorks](https://github.com/rigkid/RigWorks) documents from any host, in
 ```cpp
 #include "ContractImport.h"
 
-auto result = rigkit::project::importContractFile(*ecs, path);
+// Prefer the pack codec table so import and .rig save share one deserialize path.
+auto result = rigkit::project::importContractJson(*ecs, jsonText, path, doc->serializer().registry());
 if (!result.ok) { /* result.error */ }
-// Modulators: CModLfo + CModBinding advance via SModulators (Update systems).
-// UI controls are views over live ECS properties (contractGet*/Set* take MEcs&).
 ```
 
-Maps geometry / transform / camera / light / material albedo / paint / LFO+binding / **`rig.media.code` → `CCode`** into host PODs. UI panel / control / action rows stay on `ContractImportResult` as **layout only** — property values live on entities.
+Pass the document pack's registry when available. Relationship still remaps by Contract document id (not `eN` handles). UI panel / control / action rows stay on `ContractImportResult` as layout only. `rig.media.code`, paint.solid present fallback, and material→fill stay special-cased.
 
 ## Build Example
 

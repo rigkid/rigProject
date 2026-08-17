@@ -69,6 +69,7 @@ void rigProject::setup() {
 
 	ecs->registerComponent<ecs::CProject>("Project", true);
 	ecs->registerComponent<ecs::CPage>("Page", true);
+	project::registerPageSerializers(m_serializer.registry());
 
 	ecs->registerSystem("ProjectLoadSave", SystemPhase::Update, [this](MEcs& e) {
 		if (m_loadRequested) {

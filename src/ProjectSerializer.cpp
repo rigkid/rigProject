@@ -70,10 +70,6 @@ void applyEnvelopeToProject(ecs::CProject& doc, const ordered_json& envelope) {
 
 } // namespace
 
-ProjectSerializer::ProjectSerializer() {
-	registerCoreSerializers(m_registry);
-}
-
 bool ProjectSerializer::isProjectMetadataEntity(entt::registry& reg, entt::entity e) {
 	return reg.all_of<ecs::CProject>(e);
 }

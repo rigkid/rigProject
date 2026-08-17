@@ -47,7 +47,12 @@ class rigProject : public IPack {
 	 */
 	void requestLoad(const std::string& path);
 
-	/** @brief Register an extra component codec (plot packs, etc.). */
+	/**
+	 * @brief Register a component codec owned by another pack (or the app).
+	 * @details Prefer `project::addSerializer<T>(...)` then this, or pass the
+	 * filled `ComponentSerializer`. Owning packs register their portable PODs
+	 * here; this pack only walks the registry on save/load.
+	 */
 	void registerSerializer(project::ComponentSerializer serializer);
 
 	void setRootExtensionWriter(project::ProjectSerializer::RootExtensionWriter writer);

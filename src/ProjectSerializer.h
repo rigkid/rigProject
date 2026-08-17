@@ -24,7 +24,7 @@ class ProjectSerializer {
 	using RootExtensionWriter = std::function<void(MEcs& ecs, ordered_json& root)>;
 	using RootExtensionReader = std::function<void(MEcs& ecs, const ordered_json& root)>;
 
-	ProjectSerializer();
+	ProjectSerializer() = default;
 
 	ComponentSerializerRegistry& registry() { return m_registry; }
 	const ComponentSerializerRegistry& registry() const { return m_registry; }
@@ -48,7 +48,8 @@ class ProjectSerializer {
 	RootExtensionReader m_readRootExtension;
 };
 
-void registerCoreSerializers(ComponentSerializerRegistry& registry);
+/** @brief Page + page-anchor codecs owned by this pack. */
+void registerPageSerializers(ComponentSerializerRegistry& registry);
 
 } // namespace project
 } // namespace rigkit

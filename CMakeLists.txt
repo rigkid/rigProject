@@ -19,6 +19,7 @@ add_library(${PACK_NAME} STATIC
 	src/ProjectSerializer.h
 	src/ComponentSerializerRegistry.cpp
 	src/ComponentSerializerRegistry.h
+	src/AddSerializer.h
 	src/CoreSerializers.cpp
 	src/EntityIdRemap.cpp
 	src/EntityIdRemap.h

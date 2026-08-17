@@ -45,5 +45,21 @@ std::vector<entt::entity> ComponentSerializerRegistry::collectEntities(entt::reg
 	return out;
 }
 
+int ComponentSerializerRegistry::applyDeserializers(
+	entt::registry& reg, entt::entity entity, const ordered_json& components,
+	const std::vector<std::string>& skipSchemaIds) const {
+	std::unordered_set<std::string> skip(skipSchemaIds.begin(), skipSchemaIds.end());
+	int applied = 0;
+	for (const auto& ser : m_serializers) {
+		if (skip.count(ser.schemaId) || !components.contains(ser.schemaId) || !ser.deserialize) {
+			continue;
+		}
+		if (ser.deserialize(reg, entity, components[ser.schemaId])) {
+			++applied;
+		}
+	}
+	return applied;
+}
+
 } // namespace project
 } // namespace rigkit
