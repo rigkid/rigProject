@@ -26,6 +26,8 @@ add_library(${PACK_NAME} STATIC
 	src/ProjectJson.h
 	src/CProject.h
 	src/CPage.h
+	src/rig/pages.h
+	src/rig/pagesWindow.h
 	src/ContractImport.cpp
 	src/ContractImport.h
 )

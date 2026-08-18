@@ -4,6 +4,26 @@
 
 Host **project** envelope (`CProject` / `CPage` PODs) + `.rig` **document** IO, plus Contract `rig.*` import (`ContractImport.h`). Depends on rigComponent for registration order.
 
+## Pages
+
+Header-only: register **rigProject**, `#include "rig/pages.h"`, call `makePage`:
+
+```cpp
+#include "rig/pages.h"
+
+auto page = rig::makePage(520.f, 380.f); // CPage + board + paper plate
+auto c = rig::makeCircle(260.f, 190.f, 40.f);
+rig::placeOnPage(c);
+
+// update — design-space view + pointer (central dock * design/fb)
+rig::pollPageNav(nav);
+rig::setPageLayout(rig::PageLayout::Single); // or Stack
+// window (needs rigImGui):
+wm->createWindow<rig::PagesWindow>();
+```
+
+Pages sit under each other on a board group, centered in the view. Drag pans; wheel zooms toward the cursor. **Scroll** shows the stack; **One page** hides the rest. PDF emit is **rigPdf**.
+
 ## Lingo: document vs project
 
 - **Document** = the portable `.rig` file — Contract JSON (`entities[].components` with `rig.*` schema ids). What RigViewer presents and RigPlayer plays.
