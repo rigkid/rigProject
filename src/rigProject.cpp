@@ -1,7 +1,8 @@
 #include "rigProject.h"
 #include <spdlog/spdlog.h>
-#include "CProject.h"
 #include "CPage.h"
+#include "CProject.h"
+#include "ComponentSerializers.h"
 #include "core/RigKitEngine.h"
 #include "core/pack/PackRegistry.h"
 #include "ecs/MEcs.h"
@@ -70,6 +71,9 @@ void rigProject::setup() {
 	ecs->registerComponent<ecs::CProject>("Project", true);
 	ecs->registerComponent<ecs::CPage>("Page", true);
 	project::registerPageSerializers(m_serializer.registry());
+	// Codecs for rigComponent's PODs live with the registry, so a data-only app
+	// (rigComponent without this pack) links clean.
+	project::registerComponentSerializers(m_serializer.registry());
 
 	ecs->registerSystem("ProjectLoadSave", SystemPhase::Update, [this](MEcs& e) {
 		if (m_loadRequested) {

@@ -36,7 +36,7 @@ Contract JSON is the only `.rig` dialect: what this pack writes is what RigViewe
 - Root shape: `{ "rig": "<contract version>", "document": {...}, "entities": [...] }`
 - Entity shape: `{ "id": "e12", "components": { "rig.spatial.transform": {...} } }` — the name rides in `rig.meta.named`
 - Every codec carries a schema id: `rig.*` where the Contract defines the shape, `x.<vendor>.*` for host-only data. Registration refuses a codec without one, so nothing reaches a file unlabelled.
-- **This pack walks codecs; it does not own every codec.** Envelope + `CPage` / page-anchor live here. Portable PODs register from the owning pack (`rigComponent::setup` → `registerComponentSerializers`, plot packs / apps → `registerSerializer`). Use `project::addSerializer<T>(...)` instead of copying the registry glue.
+- **This pack walks codecs; it does not own every codec.** Envelope + `CPage` / page-anchor codecs live here, and so do the codecs for rigComponent's PODs (`ComponentSerializers.cpp` — this pack already depends on rigComponent, and keeping them here lets a data-only app link rigComponent without pulling the registry). Domain packs and apps register their own via `registerSerializer`. Use `project::addSerializer<T>(...)` instead of copying the registry glue.
 - Skips: Selection (session), Canvas/Texture (non-portable), document metadata entity in `entities[]`
 - Optional root extension writer/reader for domain envelopes (e.g. plotter)
 
