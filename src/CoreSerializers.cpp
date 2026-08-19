@@ -9,9 +9,9 @@ namespace project {
 namespace {
 
 /// `rig.spatial.anchor` ids for `CPage::originAnchor` — full 3×3 face.
-constexpr const char* kOriginAnchorIds[] = {
-	"topLeft",	   "topCenter",	  "topRight",	 "middleLeft",	 "center",
-	"middleRight", "bottomLeft", "bottomCenter", "bottomRight"};
+constexpr const char* kOriginAnchorIds[] = {"top-left",	   "top-center",	"top-right",
+											"middle-left", "center",		"middle-right",
+											"bottom-left", "bottom-center", "bottom-right"};
 constexpr int kOriginAnchorIdCount = 9;
 
 const char* originAnchorId(int v) {
@@ -35,7 +35,8 @@ bool edgesAllZero(float a, float b, float c, float d) {
 	return a == 0.f && b == 0.f && c == 0.f && d == 0.f;
 }
 
-void writeEdges(ordered_json& j, const char* key, float top, float right, float bottom, float left) {
+void writeEdges(ordered_json& j, const char* key, float top, float right, float bottom,
+				float left) {
 	if (edgesAllZero(top, right, bottom, left)) {
 		return;
 	}
@@ -86,11 +87,6 @@ bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j)
 	readEdges(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft);
 	readEdges(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft);
 	readEdges(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft);
-	// Documents written before the anchor moved to its own component still name
-	// it here; the page schema has no such field, so this only reads.
-	if (j.contains("originAnchor") && j["originAnchor"].is_string()) {
-		p.originAnchor = originAnchorFromId(j["originAnchor"].get<std::string>());
-	}
 	reg.emplace_or_replace<ecs::CPage>(e, p);
 	return true;
 }

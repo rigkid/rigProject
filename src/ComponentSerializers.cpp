@@ -84,17 +84,13 @@ bool deserializeTransform(entt::registry& reg, entt::entity e, const ordered_jso
 	}
 	if (j.contains("rotation")) {
 		t.setRotationQuat(quatFromJson(j["rotation"], t.rotation));
-	} else if (j.contains("euler")) {
-		// Legacy .rig â€” euler was the old serialized rotation field.
-		t.setEulerRadians(vec3FromJson(j["euler"], t.euler));
 	}
 	t.world = glm::mat4(1.0f);
 	reg.emplace_or_replace<ecs::CTransform>(e, t);
 	return true;
 }
 
-// Field names below are the Contract's own, so only the component key still has
-// to change when the writer moves to schema ids.
+// Field names below are the Contract's own; the writer keys each blob by schema id.
 
 bool serializeRectangle(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!reg.all_of<ecs::CRectangle>(e)) {
@@ -1329,13 +1325,9 @@ bool deserializeGuide(entt::registry& reg, entt::entity e, const ordered_json& j
 	return true;
 }
 
-glm::vec2 pathPointFrom(const ordered_json& cmd, const char* schemaKey, const char* legacyKey,
-						glm::vec2 fallback = {}) {
+glm::vec2 pathPointFrom(const ordered_json& cmd, const char* schemaKey, glm::vec2 fallback = {}) {
 	if (cmd.contains(schemaKey)) {
 		return vec2FromJson(cmd[schemaKey], fallback);
-	}
-	if (cmd.contains(legacyKey)) {
-		return vec2FromJson(cmd[legacyKey], fallback);
 	}
 	return fallback;
 }
@@ -1343,19 +1335,19 @@ glm::vec2 pathPointFrom(const ordered_json& cmd, const char* schemaKey, const ch
 const char* pathCmdType(ecs::CPath::Cmd t) {
 	switch (t) {
 	case ecs::CPath::Cmd::MoveTo:
-		return "moveTo";
+		return "move-to";
 	case ecs::CPath::Cmd::LineTo:
-		return "lineTo";
+		return "line-to";
 	case ecs::CPath::Cmd::CubicTo:
-		return "cubicTo";
+		return "cubic-to";
 	case ecs::CPath::Cmd::QuadTo:
-		return "quadTo";
+		return "quad-to";
 	case ecs::CPath::Cmd::Close:
 		return "close";
 	case ecs::CPath::Cmd::ArcTo:
-		return "cubicTo";
+		return "cubic-to";
 	}
-	return "moveTo";
+	return "move-to";
 }
 
 bool serializePath(entt::registry& reg, entt::entity e, ordered_json& j) {
@@ -1411,25 +1403,25 @@ bool deserializePath(entt::registry& reg, entt::entity e, const ordered_json& j)
 	ecs::CPath path;
 	if (j.contains("commands") && j["commands"].is_array()) {
 		for (const auto& cmd : j["commands"]) {
-			const std::string type = cmd.value("type", std::string("moveTo"));
+			const std::string type = cmd.value("type", std::string("move-to"));
 			ecs::CPath::Command row;
-			if (type == "lineTo") {
+			if (type == "line-to") {
 				row.type = ecs::CPath::Cmd::LineTo;
-				row.p = pathPointFrom(cmd, "point", "p");
-			} else if (type == "cubicTo") {
+				row.p = pathPointFrom(cmd, "point");
+			} else if (type == "cubic-to") {
 				row.type = ecs::CPath::Cmd::CubicTo;
-				row.p = pathPointFrom(cmd, "point", "p");
-				row.c1 = pathPointFrom(cmd, "control1", "c1");
-				row.c2 = pathPointFrom(cmd, "control2", "c2");
-			} else if (type == "quadTo") {
+				row.p = pathPointFrom(cmd, "point");
+				row.c1 = pathPointFrom(cmd, "control1");
+				row.c2 = pathPointFrom(cmd, "control2");
+			} else if (type == "quad-to") {
 				row.type = ecs::CPath::Cmd::QuadTo;
-				row.p = pathPointFrom(cmd, "point", "p");
-				row.c1 = pathPointFrom(cmd, "control1", "c1");
+				row.p = pathPointFrom(cmd, "point");
+				row.c1 = pathPointFrom(cmd, "control1");
 			} else if (type == "close") {
 				row.type = ecs::CPath::Cmd::Close;
 			} else {
 				row.type = ecs::CPath::Cmd::MoveTo;
-				row.p = pathPointFrom(cmd, "point", "p");
+				row.p = pathPointFrom(cmd, "point");
 			}
 			path.commands.push_back(row);
 		}
@@ -1462,12 +1454,6 @@ bool deserializeLayer(entt::registry& reg, entt::entity e, const ordered_json& j
 		l.colorG = rgba.g;
 		l.colorB = rgba.b;
 		l.colorA = rgba.a;
-	} else {
-		// Legacy channel packing (pixel / early host dumps).
-		l.colorR = j.value("colorR", l.colorR);
-		l.colorG = j.value("colorG", l.colorG);
-		l.colorB = j.value("colorB", l.colorB);
-		l.colorA = j.value("colorA", l.colorA);
 	}
 	reg.emplace_or_replace<ecs::CLayer>(e, l);
 	return true;

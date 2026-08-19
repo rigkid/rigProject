@@ -13,17 +13,14 @@
 #include <spdlog/spdlog.h>
 
 #include "CArc.h"
-#include "CSpline.h"
-#include "CSpline3d.h"
-#include "CNurbsSurface.h"
-#include "CCadBox.h"
-#include "CCadCylinder.h"
-#include "CCadSphere.h"
-#include "CCadExtrude.h"
-#include "CCadRevolve.h"
 #include "CCadBoolean.h"
-#include "CCadFillet.h"
+#include "CCadBox.h"
 #include "CCadChamfer.h"
+#include "CCadCylinder.h"
+#include "CCadExtrude.h"
+#include "CCadFillet.h"
+#include "CCadRevolve.h"
+#include "CCadSphere.h"
 #include "CCamera.h"
 #include "CCode.h"
 #include "CDrawStyle.h"
@@ -31,26 +28,29 @@
 #include "CLight.h"
 #include "CLine.h"
 #include "CMesh.h"
-#include "MeshFaces.h"
 #include "CModBinding.h"
 #include "CModLfo.h"
-#include "CTween.h"
 #include "CMusicClock.h"
 #include "CMusicTransport.h"
+#include "CNurbsSurface.h"
 #include "CPage.h"
 #include "CPalette.h"
 #include "CPath.h"
-#include "ProjectJson.h"
 #include "CPolygon.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
 #include "CRelationship.h"
 #include "CRing.h"
 #include "CSelectable.h"
+#include "CSpline.h"
+#include "CSpline3d.h"
 #include "CStar.h"
 #include "CTransform.h"
+#include "CTween.h"
 #include "EntityProperty.h"
+#include "MeshFaces.h"
 #include "PrimitiveBounds.h"
+#include "ProjectJson.h"
 #include "core/TypeJson.h"
 #include "core/json.h"
 #include "ecs/MEcs.h"
@@ -169,7 +169,7 @@ rigkit::ecs::CMesh meshFromContract(const json& meshJson) {
 	const std::string mode = meshJson.value("mode", "triangles");
 	if (mode == "lines") {
 		mesh.mode = rigkit::ecs::CMesh::Mode::Lines;
-	} else if (mode == "lineStrip") {
+	} else if (mode == "line-strip") {
 		mesh.mode = rigkit::ecs::CMesh::Mode::LineStrip;
 	} else {
 		mesh.mode = rigkit::ecs::CMesh::Mode::Triangles;
@@ -179,7 +179,8 @@ rigkit::ecs::CMesh meshFromContract(const json& meshJson) {
 	if (positions.is_array() && !positions.empty()) {
 		if (positions[0].is_number()) {
 			for (size_t i = 0; i + 2 < positions.size(); i += 3) {
-				mesh.positions.emplace_back(positions[i].get<float>(), positions[i + 1].get<float>(),
+				mesh.positions.emplace_back(positions[i].get<float>(),
+											positions[i + 1].get<float>(),
 											positions[i + 2].get<float>());
 			}
 		} else {
@@ -472,9 +473,9 @@ void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
 
 /// Nine Contract cells onto `CPage::originAnchor` (same order as page codecs).
 int originAnchorFromId(const std::string& id) {
-	static const char* const kIds[] = {
-		"topLeft",	   "topCenter",	  "topRight",	 "middleLeft",	 "center",
-		"middleRight", "bottomLeft", "bottomCenter", "bottomRight"};
+	static const char* const kIds[] = {"top-left",	  "top-center",	   "top-right",
+									   "middle-left", "center",		   "middle-right",
+									   "bottom-left", "bottom-center", "bottom-right"};
 	for (int i = 0; i < 9; ++i) {
 		if (id == kIds[i]) {
 			return i;
@@ -543,7 +544,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	}
 
 	ecs.clear();
-	result.title = root.value("document", json::object()).value("title", sourceLabel.empty() ? "Rig document" : sourceLabel);
+	result.title = root.value("document", json::object())
+					   .value("title", sourceLabel.empty() ? "Rig document" : sourceLabel);
 
 	if (!root.contains("entities") || !root["entities"].is_array()) {
 		result.ok = true;
@@ -581,115 +583,111 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		++result.entityCount;
 
 		if (!codecs) {
-		if (comps.contains("rig.mod.lfo")) {
-			const auto& lfo = comps["rig.mod.lfo"];
-			rigkit::ecs::CModLfo mod;
-			mod.waveform = lfo.value("waveform", "sine");
-			mod.frequency = lfo.value("frequency", 0.f);
-			mod.amplitude = lfo.value("amplitude", 1.f);
-			mod.offset = lfo.value("offset", 0.f);
-			mod.phase = lfo.value("phase", 0.f);
-			ecs.addComponent(entity, mod);
-		}
-		if (comps.contains("rig.mod.binding")) {
-			const auto& b = comps["rig.mod.binding"];
-			rigkit::ecs::CModBinding bind;
-			bind.source = b.value("source", "");
-			bind.target = b.value("target", "");
-			bind.propertyKey = b.value("propertyKey", "");
-			bind.depth = b.value("depth", 1.f);
-			bind.additive = b.value("additive", false);
-			if (b.contains("min")) {
-				bind.hasMin = true;
-				bind.min = b["min"].get<float>();
+			if (comps.contains("rig.mod.lfo")) {
+				const auto& lfo = comps["rig.mod.lfo"];
+				rigkit::ecs::CModLfo mod;
+				mod.waveform = lfo.value("waveform", "sine");
+				mod.frequency = lfo.value("frequency", 0.f);
+				mod.amplitude = lfo.value("amplitude", 1.f);
+				mod.offset = lfo.value("offset", 0.f);
+				mod.phase = lfo.value("phase", 0.f);
+				ecs.addComponent(entity, mod);
 			}
-			if (b.contains("max")) {
-				bind.hasMax = true;
-				bind.max = b["max"].get<float>();
-			}
-			ecs.addComponent(entity, bind);
-		}
-		if (comps.contains("rig.anim.tween")) {
-			const auto& t = comps["rig.anim.tween"];
-			rigkit::ecs::CTween tw;
-			tw.target = t.value("target", "");
-			tw.propertyKey = t.value("propertyKey", "");
-			tw.from = t.value("from", 0.f);
-			tw.to = t.value("to", 1.f);
-			tw.duration = t.value("duration", 1.f);
-			tw.elapsed = t.value("elapsed", 0.f);
-			tw.easing = t.value("easing", "linear");
-			tw.loop = t.value("loop", false);
-			tw.playing = t.value("playing", true);
-			ecs.addComponent(entity, tw);
-		}
-		if (comps.contains("rig.music.clock")) {
-			const auto& c = comps["rig.music.clock"];
-			rigkit::ecs::CMusicClock clock;
-			clock.ticksPerQuarter = c.value("ticksPerQuarter", clock.ticksPerQuarter);
-			clock.phaseTicks = c.value("phaseTicks", clock.phaseTicks);
-			clock.swingAmount = c.value("swingAmount", clock.swingAmount);
-			clock.swingSubdiv = c.value("swingSubdiv", clock.swingSubdiv);
-			clock.externalSync = c.value("externalSync", clock.externalSync);
-			clock.syncBeat = c.value("syncBeat", clock.syncBeat);
-			clock.syncPhase = c.value("syncPhase", clock.syncPhase);
-			clock.syncPeriodBars = c.value("syncPeriodBars", clock.syncPeriodBars);
-			ecs.addComponent(entity, clock);
-		}
-		if (comps.contains("rig.music.transport")) {
-			const auto& t = comps["rig.music.transport"];
-			rigkit::ecs::CMusicTransport tr;
-			tr.playing = t.value("playing", tr.playing);
-			tr.bpm = t.value("bpm", tr.bpm);
-			tr.timeSigNum = t.value("timeSigNum", tr.timeSigNum);
-			tr.timeSigDen = t.value("timeSigDen", tr.timeSigDen);
-			tr.positionBeats = t.value("positionBeats", tr.positionBeats);
-			tr.loop = t.value("loop", tr.loop);
-			tr.loopStartBeats = t.value("loopStartBeats", tr.loopStartBeats);
-			tr.loopEndBeats = t.value("loopEndBeats", tr.loopEndBeats);
-			ecs.addComponent(entity, tr);
-		}
-
-		if (comps.contains("rig.layout.page")) {
-			const auto& p = comps["rig.layout.page"];
-			rigkit::ecs::CPage page;
-			page.name = name;
-			page.index = p.value("index", page.index);
-			page.unit = p.value("unit", page.unit);
-			page.width = p.value("width", page.width);
-			page.height = p.value("height", page.height);
-			readPageEdges(p, "margins", page.marginTop, page.marginRight, page.marginBottom,
-						  page.marginLeft);
-			readPageEdges(p, "bleed", page.bleedTop, page.bleedRight, page.bleedBottom,
-						  page.bleedLeft);
-			readPageEdges(p, "slug", page.slugTop, page.slugRight, page.slugBottom, page.slugLeft);
-			// The anchor is its own component; older documents named it on the
-			// page, so both are read.
-			if (p.contains("originAnchor") && p["originAnchor"].is_string()) {
-				page.originAnchor = originAnchorFromId(p["originAnchor"].get<std::string>());
-			}
-			if (comps.contains("rig.spatial.anchor")) {
-				const auto& anchor = comps["rig.spatial.anchor"];
-				if (anchor.contains("point") && anchor["point"].is_string()) {
-					page.originAnchor = originAnchorFromId(anchor["point"].get<std::string>());
+			if (comps.contains("rig.mod.binding")) {
+				const auto& b = comps["rig.mod.binding"];
+				rigkit::ecs::CModBinding bind;
+				bind.source = b.value("source", "");
+				bind.target = b.value("target", "");
+				bind.propertyKey = b.value("propertyKey", "");
+				bind.depth = b.value("depth", 1.f);
+				bind.additive = b.value("additive", false);
+				if (b.contains("min")) {
+					bind.hasMin = true;
+					bind.min = b["min"].get<float>();
 				}
-			}
-			ecs.addComponent(entity, page);
-		}
-
-		if (comps.contains("rig.pixel.palette")) {
-			const auto& pal = comps["rig.pixel.palette"];
-			rigkit::ecs::CPalette palette = rigkit::ecs::CPalette::default16();
-			if (pal.contains("colors") && pal["colors"].is_array()) {
-				const size_t n = std::min(pal["colors"].size(),
-										  static_cast<size_t>(rigkit::ecs::CPalette::kCount));
-				for (size_t i = 0; i < n; ++i) {
-					const glm::vec4 c = rgbaFromJson(pal["colors"][i]);
-					palette.colors[i] = c;
+				if (b.contains("max")) {
+					bind.hasMax = true;
+					bind.max = b["max"].get<float>();
 				}
+				ecs.addComponent(entity, bind);
 			}
-			ecs.addComponent(entity, palette);
-		}
+			if (comps.contains("rig.anim.tween")) {
+				const auto& t = comps["rig.anim.tween"];
+				rigkit::ecs::CTween tw;
+				tw.target = t.value("target", "");
+				tw.propertyKey = t.value("propertyKey", "");
+				tw.from = t.value("from", 0.f);
+				tw.to = t.value("to", 1.f);
+				tw.duration = t.value("duration", 1.f);
+				tw.elapsed = t.value("elapsed", 0.f);
+				tw.easing = t.value("easing", "linear");
+				tw.loop = t.value("loop", false);
+				tw.playing = t.value("playing", true);
+				ecs.addComponent(entity, tw);
+			}
+			if (comps.contains("rig.music.clock")) {
+				const auto& c = comps["rig.music.clock"];
+				rigkit::ecs::CMusicClock clock;
+				clock.ticksPerQuarter = c.value("ticksPerQuarter", clock.ticksPerQuarter);
+				clock.phaseTicks = c.value("phaseTicks", clock.phaseTicks);
+				clock.swingAmount = c.value("swingAmount", clock.swingAmount);
+				clock.swingSubdiv = c.value("swingSubdiv", clock.swingSubdiv);
+				clock.externalSync = c.value("externalSync", clock.externalSync);
+				clock.syncBeat = c.value("syncBeat", clock.syncBeat);
+				clock.syncPhase = c.value("syncPhase", clock.syncPhase);
+				clock.syncPeriodBars = c.value("syncPeriodBars", clock.syncPeriodBars);
+				ecs.addComponent(entity, clock);
+			}
+			if (comps.contains("rig.music.transport")) {
+				const auto& t = comps["rig.music.transport"];
+				rigkit::ecs::CMusicTransport tr;
+				tr.playing = t.value("playing", tr.playing);
+				tr.bpm = t.value("bpm", tr.bpm);
+				tr.timeSigNum = t.value("timeSigNum", tr.timeSigNum);
+				tr.timeSigDen = t.value("timeSigDen", tr.timeSigDen);
+				tr.positionBeats = t.value("positionBeats", tr.positionBeats);
+				tr.loop = t.value("loop", tr.loop);
+				tr.loopStartBeats = t.value("loopStartBeats", tr.loopStartBeats);
+				tr.loopEndBeats = t.value("loopEndBeats", tr.loopEndBeats);
+				ecs.addComponent(entity, tr);
+			}
+
+			if (comps.contains("rig.layout.page")) {
+				const auto& p = comps["rig.layout.page"];
+				rigkit::ecs::CPage page;
+				page.name = name;
+				page.index = p.value("index", page.index);
+				page.unit = p.value("unit", page.unit);
+				page.width = p.value("width", page.width);
+				page.height = p.value("height", page.height);
+				readPageEdges(p, "margins", page.marginTop, page.marginRight, page.marginBottom,
+							  page.marginLeft);
+				readPageEdges(p, "bleed", page.bleedTop, page.bleedRight, page.bleedBottom,
+							  page.bleedLeft);
+				readPageEdges(p, "slug", page.slugTop, page.slugRight, page.slugBottom,
+							  page.slugLeft);
+				if (comps.contains("rig.spatial.anchor")) {
+					const auto& anchor = comps["rig.spatial.anchor"];
+					if (anchor.contains("point") && anchor["point"].is_string()) {
+						page.originAnchor = originAnchorFromId(anchor["point"].get<std::string>());
+					}
+				}
+				ecs.addComponent(entity, page);
+			}
+
+			if (comps.contains("rig.pixel.palette")) {
+				const auto& pal = comps["rig.pixel.palette"];
+				rigkit::ecs::CPalette palette = rigkit::ecs::CPalette::default16();
+				if (pal.contains("colors") && pal["colors"].is_array()) {
+					const size_t n = std::min(pal["colors"].size(),
+											  static_cast<size_t>(rigkit::ecs::CPalette::kCount));
+					for (size_t i = 0; i < n; ++i) {
+						const glm::vec4 c = rgbaFromJson(pal["colors"][i]);
+						palette.colors[i] = c;
+					}
+				}
+				ecs.addComponent(entity, palette);
+			}
 		} // !codecs — POD blobs come from applyDeserializers when a registry is passed
 
 		if (comps.contains("rig.ui.panel")) {
@@ -769,8 +767,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 
 		if (codecs) {
 			ordered_json blob = comps;
-			codecs->applyDeserializers(ecs.registry(), entity, blob,
-									   {"rig.spatial.relationship"});
+			codecs->applyDeserializers(ecs.registry(), entity, blob, {"rig.spatial.relationship"});
 			if (ecs.hasComponent<rigkit::ecs::CPage>(entity)) {
 				ecs.getComponent<rigkit::ecs::CPage>(entity).name = name;
 			}
@@ -788,8 +785,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 					}
 				}
 			}
-			if (comps.contains("rig.media.code") &&
-				!ecs.hasComponent<rigkit::ecs::CCode>(entity)) {
+			if (comps.contains("rig.media.code") && !ecs.hasComponent<rigkit::ecs::CCode>(entity)) {
 				const auto& code = comps["rig.media.code"];
 				rigkit::ecs::CCode buffer;
 				buffer.name = name;
@@ -931,8 +927,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 				style.hasStroke = false;
 			}
 			if (!comps.contains("rig.spatial.transform")) {
-				transform.position = {320.f + static_cast<float>(result.geometryCount) * 200.f, 280.f,
-									  0.f};
+				transform.position = {320.f + static_cast<float>(result.geometryCount) * 200.f,
+									  280.f, 0.f};
 				ecs.getComponent<rigkit::ecs::CTransform>(entity) = transform;
 			}
 			wroteGeometry = true;
@@ -1064,49 +1060,57 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			if (path.contains("commands") && path["commands"].is_array()) {
 				for (const auto& cmd : path["commands"]) {
 					const std::string type = cmd.value("type", "");
-					if (type == "moveTo" && cmd.contains("p")) {
-						cx = cmd["p"][0].get<float>();
-						cy = cmd["p"][1].get<float>();
-						pts.emplace_back(cx, cy);
-					} else if (type == "lineTo" && cmd.contains("p")) {
-						cx = cmd["p"][0].get<float>();
-						cy = cmd["p"][1].get<float>();
-						pts.emplace_back(cx, cy);
-					} else if (type == "cubicTo") {
-						const auto c1 = cmd.value("c1", json::array({cx, cy}));
-						const auto c2 = cmd.value("c2", json::array({cx, cy}));
-						const auto p = cmd.value("p", json::array({cx, cy}));
+					if (type == "move-to" && cmd.contains("point")) {
+						const glm::vec2 p = vec2FromJson(cmd["point"], {cx, cy});
+						cx = p.x;
+						cy = p.y;
+						pts.push_back(p);
+					} else if (type == "line-to" && cmd.contains("point")) {
+						const glm::vec2 p = vec2FromJson(cmd["point"], {cx, cy});
+						cx = p.x;
+						cy = p.y;
+						pts.push_back(p);
+					} else if (type == "cubic-to") {
+						const glm::vec2 c1 = cmd.contains("control1")
+												 ? vec2FromJson(cmd["control1"], {cx, cy})
+												 : glm::vec2{cx, cy};
+						const glm::vec2 c2 = cmd.contains("control2")
+												 ? vec2FromJson(cmd["control2"], {cx, cy})
+												 : glm::vec2{cx, cy};
+						const glm::vec2 p = cmd.contains("point")
+												? vec2FromJson(cmd["point"], {cx, cy})
+												: glm::vec2{cx, cy};
 						const float x0 = cx;
 						const float y0 = cy;
 						for (int i = 1; i <= 12; ++i) {
 							const float t = static_cast<float>(i) / 12.f;
 							const float u = 1.f - t;
-							const float x = u * u * u * x0 + 3 * u * u * t * c1[0].get<float>() +
-											3 * u * t * t * c2[0].get<float>() +
-											t * t * t * p[0].get<float>();
-							const float y = u * u * u * y0 + 3 * u * u * t * c1[1].get<float>() +
-											3 * u * t * t * c2[1].get<float>() +
-											t * t * t * p[1].get<float>();
+							const float x = u * u * u * x0 + 3 * u * u * t * c1.x +
+											3 * u * t * t * c2.x + t * t * t * p.x;
+							const float y = u * u * u * y0 + 3 * u * u * t * c1.y +
+											3 * u * t * t * c2.y + t * t * t * p.y;
 							pts.emplace_back(x, y);
 						}
-						cx = p[0].get<float>();
-						cy = p[1].get<float>();
-					} else if (type == "quadTo") {
-						const auto c1 = cmd.value("c1", json::array({cx, cy}));
-						const auto p = cmd.value("p", json::array({cx, cy}));
+						cx = p.x;
+						cy = p.y;
+					} else if (type == "quad-to") {
+						const glm::vec2 c1 = cmd.contains("control1")
+												 ? vec2FromJson(cmd["control1"], {cx, cy})
+												 : glm::vec2{cx, cy};
+						const glm::vec2 p = cmd.contains("point")
+												? vec2FromJson(cmd["point"], {cx, cy})
+												: glm::vec2{cx, cy};
 						const float x0 = cx;
 						const float y0 = cy;
 						for (int i = 1; i <= 10; ++i) {
 							const float t = static_cast<float>(i) / 10.f;
 							const float u = 1.f - t;
-							const float x =
-								u * u * x0 + 2 * u * t * c1[0].get<float>() + t * t * p[0].get<float>();
-							const float y =
-								u * u * y0 + 2 * u * t * c1[1].get<float>() + t * t * p[1].get<float>();
+							const float x = u * u * x0 + 2 * u * t * c1.x + t * t * p.x;
+							const float y = u * u * y0 + 2 * u * t * c1.y + t * t * p.y;
 							pts.emplace_back(x, y);
 						}
-						cx = p[0].get<float>();
-						cy = p[1].get<float>();
+						cx = p.x;
+						cy = p.y;
 					} else if (type == "close") {
 						closed = true;
 					}
@@ -1257,7 +1261,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			++bindN;
 		}
 		if (lfoN > 0 || bindN > 0) {
-			spdlog::info("[ContractImport] modulators: {} LFO(s), {} binding(s) -> ECS", lfoN, bindN);
+			spdlog::info("[ContractImport] modulators: {} LFO(s), {} binding(s) -> ECS", lfoN,
+						 bindN);
 		}
 	}
 	if (!result.panels.empty()) {
@@ -1324,7 +1329,8 @@ std::optional<std::string> contractGetString(rigkit::MEcs& ecs, const ContractIm
 	return std::nullopt;
 }
 
-std::optional<std::array<float, 4>> contractGetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc,
+std::optional<std::array<float, 4>> contractGetRgba(rigkit::MEcs& ecs,
+													const ContractImportResult& doc,
 													const std::string& entityId,
 													const std::string& propertyKey) {
 	(void)propertyKey;
@@ -1336,8 +1342,8 @@ std::optional<std::array<float, 4>> contractGetRgba(rigkit::MEcs& ecs, const Con
 	return std::array<float, 4>{s.fillR, s.fillG, s.fillB, s.fillA};
 }
 
-bool contractSetFloat(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
-					  const std::string& propertyKey, float value) {
+bool contractSetFloat(rigkit::MEcs& ecs, const ContractImportResult& doc,
+					  const std::string& entityId, const std::string& propertyKey, float value) {
 	const entt::entity e = resolveEntity(doc, entityId);
 	if (e == entt::null) {
 		return false;
@@ -1345,8 +1351,9 @@ bool contractSetFloat(rigkit::MEcs& ecs, const ContractImportResult& doc, const 
 	return rigkit::ecs::writeEntityProperty(ecs, e, propertyKey, value);
 }
 
-bool contractSetString(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
-					   const std::string& propertyKey, const std::string& value) {
+bool contractSetString(rigkit::MEcs& ecs, const ContractImportResult& doc,
+					   const std::string& entityId, const std::string& propertyKey,
+					   const std::string& value) {
 	const entt::entity e = resolveEntity(doc, entityId);
 	if (e == entt::null) {
 		return false;
@@ -1369,8 +1376,9 @@ bool contractSetString(rigkit::MEcs& ecs, const ContractImportResult& doc, const
 	return false;
 }
 
-bool contractSetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
-					 const std::string& propertyKey, const std::array<float, 4>& rgba) {
+bool contractSetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc,
+					 const std::string& entityId, const std::string& propertyKey,
+					 const std::array<float, 4>& rgba) {
 	(void)propertyKey;
 	const entt::entity e = resolveEntity(doc, entityId);
 	if (e == entt::null) {
@@ -1395,7 +1403,8 @@ bool contractSetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc, const s
 	return true;
 }
 
-bool contractRunAction(rigkit::MEcs& ecs, const ContractImportResult& doc, const std::string& actionId) {
+bool contractRunAction(rigkit::MEcs& ecs, const ContractImportResult& doc,
+					   const std::string& actionId) {
 	(void)doc;
 	if (actionId == "lfo.resetPhase") {
 		for (auto e : ecs.view<rigkit::ecs::CModLfo>()) {
