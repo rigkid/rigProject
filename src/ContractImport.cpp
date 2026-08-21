@@ -17,6 +17,7 @@
 #include "CCadBox.h"
 #include "CCadChamfer.h"
 #include "CCadCylinder.h"
+#include "CCadDimension.h"
 #include "CCadExtrude.h"
 #include "CCadFillet.h"
 #include "CCadRevolve.h"
@@ -34,6 +35,7 @@
 #include "CMusicTransport.h"
 #include "CNurbsSurface.h"
 #include "CPage.h"
+#include "FaceInsets.h"
 #include "CPalette.h"
 #include "CPath.h"
 #include "CPolygon.h"
@@ -251,6 +253,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.cad.boolean",
 	"rig.cad.fillet",
 	"rig.cad.chamfer",
+	"rig.cad.dimension",
 	"rig.mod.lfo",
 	"rig.mod.binding",
 	"rig.anim.tween",
@@ -265,9 +268,21 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.render.light",
 	"rig.media.code",
 	"rig.layout.page",
+	"rig.layout.master",
+	"rig.layout.applied_master",
+	"rig.layout.facing",
+	"rig.layout.paragraph_style",
+	"rig.layout.character_style",
+	"rig.layout.frame_chain",
+	"rig.story.flow",
+	"rig.story.paragraph",
+	"rig.story.paragraph_style",
+	"rig.story.character_style",
+	"rig.story.table",
 	"rig.pixel.palette",
 	"rig.media.text",
 	"rig.media.asset_ref",
+	"rig.meta.named",
 	"rig.anim.curve",
 	"x.rigkit.layer_visible",
 	"x.rigkit.stroke_style",
@@ -279,7 +294,8 @@ const std::unordered_set<std::string> kKnown = {
 /// entity already carries something drawable.
 bool hasGeometry(const json& comps) {
 	for (auto it = comps.begin(); it != comps.end(); ++it) {
-		if (it.key().rfind("rig.geometry.", 0) == 0 || it.key().rfind("rig.cad.", 0) == 0) {
+		if (it.key().rfind("rig.geometry.", 0) == 0 ||
+			(it.key().rfind("rig.cad.", 0) == 0 && it.key() != "rig.cad.dimension")) {
 			return true;
 		}
 	}
@@ -453,6 +469,33 @@ bool importCadAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& comps
 		}
 		ecs.addComponent(entity, std::move(s));
 	}
+	if (comps.contains("rig.cad.dimension")) {
+		const auto& d = comps["rig.cad.dimension"];
+		rigkit::ecs::CCadDimension s;
+		const std::string kind = d.value("kind", std::string("linear"));
+		if (kind == "aligned") {
+			s.kind = rigkit::ecs::CCadDimension::Kind::Aligned;
+		} else if (kind == "horizontal") {
+			s.kind = rigkit::ecs::CCadDimension::Kind::Horizontal;
+		} else if (kind == "vertical") {
+			s.kind = rigkit::ecs::CCadDimension::Kind::Vertical;
+		} else if (kind == "diameter") {
+			s.kind = rigkit::ecs::CCadDimension::Kind::Diameter;
+		} else if (kind == "angle") {
+			s.kind = rigkit::ecs::CCadDimension::Kind::Angle;
+		} else {
+			s.kind = rigkit::ecs::CCadDimension::Kind::Linear;
+		}
+		s.a = d.value("a", std::string());
+		s.b = d.value("b", std::string());
+		s.value = d.value("value", 1.f);
+		s.measurement = d.value("measurement", false);
+		if (d.contains("offset")) {
+			s.offset = vec3FromJson(d["offset"], s.offset);
+		}
+		ecs.addComponent(entity, std::move(s));
+		wrote = true;
+	}
 	return wrote;
 }
 
@@ -485,14 +528,20 @@ int originAnchorFromId(const std::string& id) {
 }
 
 void readPageEdges(const json& j, const char* key, float& top, float& right, float& bottom,
-				   float& left) {
-	if (!j.contains(key) || !j[key].is_array() || j[key].size() < 4) {
+				   float& left, float& zFloor, float& zCeiling) {
+	if (!j.contains(key)) {
 		return;
 	}
-	top = j[key][0].get<float>();
-	right = j[key][1].get<float>();
-	bottom = j[key][2].get<float>();
-	left = j[key][3].get<float>();
+	FaceInsets in;
+	if (!expandFaceInsets(j[key], in)) {
+		return;
+	}
+	top = in.top;
+	right = in.right;
+	bottom = in.bottom;
+	left = in.left;
+	zFloor = in.floor;
+	zCeiling = in.ceiling;
 }
 
 void applyMaterialAlbedo(rigkit::ecs::CDrawStyle& style, const json& comps) {
@@ -661,11 +710,11 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 				page.width = p.value("width", page.width);
 				page.height = p.value("height", page.height);
 				readPageEdges(p, "margins", page.marginTop, page.marginRight, page.marginBottom,
-							  page.marginLeft);
+							  page.marginLeft, page.marginFloor, page.marginCeiling);
 				readPageEdges(p, "bleed", page.bleedTop, page.bleedRight, page.bleedBottom,
-							  page.bleedLeft);
+							  page.bleedLeft, page.bleedFloor, page.bleedCeiling);
 				readPageEdges(p, "slug", page.slugTop, page.slugRight, page.slugBottom,
-							  page.slugLeft);
+							  page.slugLeft, page.slugFloor, page.slugCeiling);
 				if (comps.contains("rig.spatial.anchor")) {
 					const auto& anchor = comps["rig.spatial.anchor"];
 					if (anchor.contains("point") && anchor["point"].is_string()) {

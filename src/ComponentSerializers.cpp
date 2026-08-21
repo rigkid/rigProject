@@ -11,6 +11,7 @@
 #include "CCadBox.h"
 #include "CCadChamfer.h"
 #include "CCadCylinder.h"
+#include "CCadDimension.h"
 #include "CCadExtrude.h"
 #include "CCadFillet.h"
 #include "CCadRevolve.h"
@@ -685,6 +686,77 @@ bool deserializeCadChamfer(entt::registry& reg, entt::entity e, const ordered_js
 		readMeshEdges(j, s.edges);
 	}
 	reg.emplace_or_replace<ecs::CCadChamfer>(e, std::move(s));
+	return true;
+}
+
+const char* cadDimensionKindName(ecs::CCadDimension::Kind kind) {
+	switch (kind) {
+	case ecs::CCadDimension::Kind::Linear:
+		return "linear";
+	case ecs::CCadDimension::Kind::Aligned:
+		return "aligned";
+	case ecs::CCadDimension::Kind::Horizontal:
+		return "horizontal";
+	case ecs::CCadDimension::Kind::Vertical:
+		return "vertical";
+	case ecs::CCadDimension::Kind::Diameter:
+		return "diameter";
+	case ecs::CCadDimension::Kind::Angle:
+		return "angle";
+	}
+	return "linear";
+}
+
+ecs::CCadDimension::Kind cadDimensionKindFromName(const std::string& name) {
+	if (name == "aligned") {
+		return ecs::CCadDimension::Kind::Aligned;
+	}
+	if (name == "horizontal") {
+		return ecs::CCadDimension::Kind::Horizontal;
+	}
+	if (name == "vertical") {
+		return ecs::CCadDimension::Kind::Vertical;
+	}
+	if (name == "diameter") {
+		return ecs::CCadDimension::Kind::Diameter;
+	}
+	if (name == "angle") {
+		return ecs::CCadDimension::Kind::Angle;
+	}
+	return ecs::CCadDimension::Kind::Linear;
+}
+
+bool serializeCadDimension(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CCadDimension>(e)) {
+		return false;
+	}
+	const auto& s = reg.get<ecs::CCadDimension>(e);
+	j["kind"] = cadDimensionKindName(s.kind);
+	j["a"] = s.a;
+	if (!s.b.empty()) {
+		j["b"] = s.b;
+	}
+	j["value"] = s.value;
+	if (s.measurement) {
+		j["measurement"] = true;
+	}
+	if (s.offset != glm::vec3{0.f, 0.f, 0.f}) {
+		j["offset"] = vec3ToJson(s.offset);
+	}
+	return true;
+}
+
+bool deserializeCadDimension(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CCadDimension s;
+	s.kind = cadDimensionKindFromName(j.value("kind", std::string("linear")));
+	s.a = j.value("a", s.a);
+	s.b = j.value("b", s.b);
+	s.value = j.value("value", s.value);
+	s.measurement = j.value("measurement", s.measurement);
+	if (j.contains("offset")) {
+		s.offset = vec3FromJson(j["offset"], s.offset);
+	}
+	reg.emplace_or_replace<ecs::CCadDimension>(e, std::move(s));
 	return true;
 }
 
@@ -1489,6 +1561,8 @@ const char* assetKindName(ecs::CAssetRef::Kind k) {
 		return "model";
 	case ecs::CAssetRef::Kind::Font:
 		return "font";
+	case ecs::CAssetRef::Kind::Document:
+		return "document";
 	case ecs::CAssetRef::Kind::Other:
 		return "other";
 	}
@@ -1510,6 +1584,9 @@ ecs::CAssetRef::Kind assetKindFromName(const std::string& name) {
 	}
 	if (name == "font") {
 		return ecs::CAssetRef::Kind::Font;
+	}
+	if (name == "document") {
+		return ecs::CAssetRef::Kind::Document;
 	}
 	return ecs::CAssetRef::Kind::Other;
 }
@@ -1704,6 +1781,8 @@ void registerInto(project::ComponentSerializerRegistry& registry) {
 								   deserializeCadFillet);
 	addSerializer<ecs::CCadChamfer>(registry, "CadChamfer", "rig.cad.chamfer", serializeCadChamfer,
 									deserializeCadChamfer);
+	addSerializer<ecs::CCadDimension>(registry, "CadDimension", "rig.cad.dimension",
+									  serializeCadDimension, deserializeCadDimension);
 	addSerializer<ecs::CRing>(registry, "Ring", "rig.geometry.ring", serializeRing,
 							  deserializeRing);
 	addSerializer<ecs::CMesh>(registry, "Mesh", "rig.geometry.mesh", serializeMesh,

@@ -10,8 +10,10 @@ namespace ecs {
 /**
  * @brief Page record — data only. Speaks `rig.layout.page`.
  * @details Empty `unit` inherits `CProject::defaultUnit`. Margins / bleed /
- * slug are scalar channel packing of the schema's number[4] arrays (CSS order).
- * `name` is editor-only; the document names the entity with `rig.meta.named`.
+ * slug are face insets on the local AABB (CSS XY order + optional Z min/max),
+ * same cuboid as `rig.spatial.anchor`. Margins inset inward; bleed/slug
+ * outward. `name` is editor-only; the document names the entity with
+ * `rig.meta.named`.
  *
  * `originAnchor` is the 3×3 face cell (`rig.spatial.anchor.point`) that is
  * page-local (0,0). It rides the page struct for host convenience but travels
@@ -29,14 +31,20 @@ struct CPage {
 	float marginRight = 0.0f;
 	float marginBottom = 0.0f;
 	float marginLeft = 0.0f;
+	float marginFloor = 0.0f;	 ///< min-Z face
+	float marginCeiling = 0.0f; ///< max-Z face
 	float bleedTop = 0.0f;
 	float bleedRight = 0.0f;
 	float bleedBottom = 0.0f;
 	float bleedLeft = 0.0f;
+	float bleedFloor = 0.0f;
+	float bleedCeiling = 0.0f;
 	float slugTop = 0.0f;
 	float slugRight = 0.0f;
 	float slugBottom = 0.0f;
 	float slugLeft = 0.0f;
+	float slugFloor = 0.0f;
+	float slugCeiling = 0.0f;
 	int originAnchor = 0; ///< 0..8 = RigWorks 3×3 point order
 
 	std::vector<sProp> GetProperties() {
@@ -52,7 +60,9 @@ struct CPage {
 				{6, "Margin Right", EPT_FLOAT, &marginRight},
 				{7, "Margin Bottom", EPT_FLOAT, &marginBottom},
 				{8, "Margin Left", EPT_FLOAT, &marginLeft},
-				{9, "Origin", EPT_INT, &originAnchor, kOrigin, 9}};
+				{9, "Margin Floor", EPT_FLOAT, &marginFloor},
+				{10, "Margin Ceiling", EPT_FLOAT, &marginCeiling},
+				{11, "Origin", EPT_INT, &originAnchor, kOrigin, 9}};
 	}
 };
 

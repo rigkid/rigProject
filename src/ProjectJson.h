@@ -16,7 +16,7 @@ using ordered_json = nlohmann::ordered_json;
  * @details Tracks the vendored RigWorks in `docs/contract/RigWorks/VERSION`. Bump
  * both together, and only after the writer actually emits what that version says.
  */
-inline constexpr const char* kContractVersion = "0.12.0";
+inline constexpr const char* kContractVersion = "0.26.0";
 
 inline ordered_json loadOrderedJson(const std::string& path) {
 	ordered_json json;

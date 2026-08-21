@@ -2,6 +2,7 @@
 
 #include "AddSerializer.h"
 #include "CPage.h"
+#include "FaceInsets.h"
 #include "ProjectSerializer.h"
 
 namespace rigkit {
@@ -31,27 +32,33 @@ int originAnchorFromId(const std::string& id) {
 	return 0;
 }
 
-bool edgesAllZero(float a, float b, float c, float d) {
-	return a == 0.f && b == 0.f && c == 0.f && d == 0.f;
+void writePageInsets(ordered_json& j, const char* key, float top, float right, float bottom,
+					 float left, float zFloor, float zCeiling) {
+	FaceInsets in;
+	in.top = top;
+	in.right = right;
+	in.bottom = bottom;
+	in.left = left;
+	in.floor = zFloor;
+	in.ceiling = zCeiling;
+	writeFaceInsets(j, key, in);
 }
 
-void writeEdges(ordered_json& j, const char* key, float top, float right, float bottom,
-				float left) {
-	if (edgesAllZero(top, right, bottom, left)) {
+void readPageInsets(const ordered_json& j, const char* key, float& top, float& right, float& bottom,
+					float& left, float& zFloor, float& zCeiling) {
+	if (!j.contains(key)) {
 		return;
 	}
-	j[key] = ordered_json::array({top, right, bottom, left});
-}
-
-void readEdges(const ordered_json& j, const char* key, float& top, float& right, float& bottom,
-			   float& left) {
-	if (!j.contains(key) || !j[key].is_array() || j[key].size() < 4) {
+	FaceInsets in;
+	if (!expandFaceInsets(j[key], in)) {
 		return;
 	}
-	top = j[key][0].get<float>();
-	right = j[key][1].get<float>();
-	bottom = j[key][2].get<float>();
-	left = j[key][3].get<float>();
+	top = in.top;
+	right = in.right;
+	bottom = in.bottom;
+	left = in.left;
+	zFloor = in.floor;
+	zCeiling = in.ceiling;
 }
 
 bool serializePage(entt::registry& reg, entt::entity e, ordered_json& j) {
@@ -67,9 +74,12 @@ bool serializePage(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!p.unit.empty()) {
 		j["unit"] = p.unit;
 	}
-	writeEdges(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft);
-	writeEdges(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft);
-	writeEdges(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft);
+	writePageInsets(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft,
+					p.marginFloor, p.marginCeiling);
+	writePageInsets(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft, p.bleedFloor,
+					p.bleedCeiling);
+	writePageInsets(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft, p.slugFloor,
+					p.slugCeiling);
 	return true;
 }
 
@@ -84,9 +94,12 @@ bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j)
 	p.unit = j.value("unit", p.unit);
 	p.width = j.value("width", p.width);
 	p.height = j.value("height", p.height);
-	readEdges(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft);
-	readEdges(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft);
-	readEdges(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft);
+	readPageInsets(j, "margins", p.marginTop, p.marginRight, p.marginBottom, p.marginLeft,
+				   p.marginFloor, p.marginCeiling);
+	readPageInsets(j, "bleed", p.bleedTop, p.bleedRight, p.bleedBottom, p.bleedLeft, p.bleedFloor,
+				   p.bleedCeiling);
+	readPageInsets(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft, p.slugFloor,
+				   p.slugCeiling);
 	reg.emplace_or_replace<ecs::CPage>(e, p);
 	return true;
 }

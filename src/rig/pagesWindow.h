@@ -29,7 +29,12 @@ class PagesWindow : public rigkit::IWindow {
 			return;
 		}
 
-		int mode = (pageLayout() == PageLayout::Single) ? 1 : 0;
+		int mode = 0;
+		if (pageLayout() == PageLayout::Single) {
+			mode = 1;
+		} else if (pageLayout() == PageLayout::Spread) {
+			mode = 2;
+		}
 		if (ImGui::RadioButton("Scroll", mode == 0)) {
 			setPageLayout(PageLayout::Stack);
 		}
@@ -37,14 +42,38 @@ class PagesWindow : public rigkit::IWindow {
 		if (ImGui::RadioButton("One page", mode == 1)) {
 			setPageLayout(PageLayout::Single);
 		}
+		ImGui::SameLine();
+		if (ImGui::RadioButton("Spreads", mode == 2)) {
+			setPageLayout(PageLayout::Spread);
+		}
 
 		ImGui::Text("Page %d / %d   %.0f%%", activePageIndex() + 1, n, pageZoom() * 100.f);
 		if (ImGui::Button("<")) {
-			focusPage(activePageIndex() - 1);
+			const int cur = activePageIndex();
+			if (pageLayout() == PageLayout::Spread) {
+				if (cur <= 0) {
+					focusPage(0);
+				} else if (cur == 1) {
+					focusPage(0);
+				} else {
+					focusPage(cur - 2);
+				}
+			} else {
+				focusPage(cur - 1);
+			}
 		}
 		ImGui::SameLine();
 		if (ImGui::Button(">")) {
-			focusPage(activePageIndex() + 1);
+			const int cur = activePageIndex();
+			if (pageLayout() == PageLayout::Spread) {
+				if (cur <= 0) {
+					focusPage(1);
+				} else {
+					focusPage(cur + 2);
+				}
+			} else {
+				focusPage(cur + 1);
+			}
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Fit")) {

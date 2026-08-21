@@ -61,8 +61,9 @@ struct PageNavInput {
  * ```
  */
 enum class PageLayout {
-	Stack,  ///< Pages sit under each other; pan the board to scroll.
+	Stack,	///< Pages sit under each other; pan the board to scroll.
 	Single, ///< Only the active page is visible.
+	Spread, ///< Facing pairs side by side (recto-first: page 0 alone on the right).
 };
 
 entt::entity makePage(float w, float h, const char* unit = nullptr, bool plate = true);
@@ -225,6 +226,58 @@ inline void applyLayout() {
 		return 0;
 	}();
 	float y = 0.f;
+
+	if (s.layout == PageLayout::Spread) {
+		// Recto-first, left binding: page 0 alone on the right; then 1|2, 3|4, …
+		int i = 0;
+		const int n = static_cast<int>(s.pages.size());
+		while (i < n) {
+			const bool loneRecto = (i == 0);
+			const int leftIdx = loneRecto ? -1 : i;
+			const int rightIdx = loneRecto ? 0 : (i + 1 < n ? i + 1 : -1);
+			float rowH = 0.f;
+
+			auto place = [&](int idx, bool left) {
+				if (idx < 0) {
+					return;
+				}
+				const auto e = s.pages[static_cast<size_t>(idx)];
+				if (!s.ecs->registry().valid(e) || !s.ecs->hasComponent<rigkit::ecs::CPage>(e) ||
+					!s.ecs->hasComponent<rigkit::ecs::CTransform>(e)) {
+					return;
+				}
+				const auto& page = s.ecs->getComponent<rigkit::ecs::CPage>(e);
+				auto& xf = s.ecs->getComponent<rigkit::ecs::CTransform>(e);
+				if (!s.ecs->hasComponent<rigkit::ecs::CLayer>(e)) {
+					s.ecs->addComponent<rigkit::ecs::CLayer>(e, rigkit::ecs::CLayer{});
+				}
+				s.ecs->getComponent<rigkit::ecs::CLayer>(e).visible = true;
+				rowH = std::max(rowH, page.height);
+				if (loneRecto) {
+					xf.position.x = kPageGap * 0.5f;
+				} else if (left) {
+					xf.position.x = -page.width - kPageGap * 0.5f;
+				} else {
+					xf.position.x = kPageGap * 0.5f;
+				}
+				xf.position.y = y;
+			};
+
+			if (loneRecto) {
+				place(0, false);
+				i = 1;
+			} else {
+				place(leftIdx, true);
+				place(rightIdx, false);
+				i += 2;
+			}
+			y += rowH + kPageGap;
+		}
+		// Hide nothing in Spread — all pages stay visible in their pairs.
+		s.stackY = y;
+		return;
+	}
+
 	for (int i = 0; i < static_cast<int>(s.pages.size()); ++i) {
 		const auto e = s.pages[static_cast<size_t>(i)];
 		if (!s.ecs->registry().valid(e) || !s.ecs->hasComponent<rigkit::ecs::CPage>(e) ||
@@ -292,7 +345,10 @@ inline void applyZoom(float factor, float pivotX, float pivotY) {
 
 inline void markActiveFromView() {
 	auto& s = rt();
-	if (!s.ecs || s.pages.empty() || s.layout != PageLayout::Stack) {
+	if (!s.ecs || s.pages.empty()) {
+		return;
+	}
+	if (s.layout != PageLayout::Stack && s.layout != PageLayout::Spread) {
 		return;
 	}
 	const float viewMidY = (s.viewH > 1.f) ? (s.viewY + s.viewH * 0.5f) : (-s.panY);

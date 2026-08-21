@@ -32,11 +32,48 @@ add_library(${PACK_NAME} STATIC
 	src/rig/pagesWindow.h
 	src/ContractImport.cpp
 	src/ContractImport.h
+	src/Rigz.cpp
+	src/Rigz.h
 )
+
+include(FetchContent)
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+set(MINIZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(MINIZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(MINIZ_BUILD_FRAMEWORK OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+	miniz
+	GIT_REPOSITORY https://github.com/richgel999/miniz.git
+	GIT_TAG 3.0.2
+	GIT_SHALLOW TRUE
+	EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(miniz)
+if(NOT TARGET miniz)
+	# miniz 3.0.2 still declares cmake_minimum_required(3.0); if its project
+	# did not create a target, build the amalgamation sources ourselves.
+	set(_miniz_export_dir "${CMAKE_CURRENT_BINARY_DIR}/miniz_export")
+	file(MAKE_DIRECTORY "${_miniz_export_dir}")
+	file(WRITE "${_miniz_export_dir}/miniz_export.h"
+		"#pragma once\n#ifndef MINIZ_EXPORT\n#define MINIZ_EXPORT\n#endif\n")
+	add_library(miniz STATIC
+		"${miniz_SOURCE_DIR}/miniz.c"
+		"${miniz_SOURCE_DIR}/miniz_tdef.c"
+		"${miniz_SOURCE_DIR}/miniz_tinfl.c"
+		"${miniz_SOURCE_DIR}/miniz_zip.c"
+	)
+	target_include_directories(miniz PUBLIC
+		"${miniz_SOURCE_DIR}"
+		"${_miniz_export_dir}"
+	)
+endif()
+
 target_link_libraries(${PACK_NAME} PUBLIC rigkit)
 if(TARGET rigComponent)
 	target_link_libraries(${PACK_NAME} PUBLIC rigComponent)
 endif()
+target_link_libraries(${PACK_NAME} PRIVATE miniz)
 target_include_directories(${PACK_NAME} PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/src>
 )

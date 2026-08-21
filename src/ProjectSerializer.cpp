@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 #include "CProject.h"
+#include "CTransient.h"
 #include "EntityIdRemap.h"
 #include "ecs/MEcs.h"
 
@@ -75,9 +76,8 @@ bool ProjectSerializer::isProjectMetadataEntity(entt::registry& reg, entt::entit
 }
 
 bool ProjectSerializer::shouldSkipEntity(entt::registry& reg, entt::entity e) {
-	(void)reg;
-	(void)e;
-	return false;
+	// Session scaffolding (preview scenes, caches) never belongs in a document.
+	return reg.all_of<ecs::CTransient>(e);
 }
 
 bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
