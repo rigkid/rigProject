@@ -1,9 +1,9 @@
-#include <string>
-
 #include "AddSerializer.h"
 #include "CPage.h"
 #include "FaceInsets.h"
 #include "ProjectSerializer.h"
+
+#include <string>
 
 namespace rigkit {
 namespace project {

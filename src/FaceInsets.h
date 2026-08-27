@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ProjectJson.h"
 /**
  * @file FaceInsets.h
  * @brief Six face insets on a local AABB (same cuboid as rig.spatial.anchor).
@@ -7,8 +8,6 @@
  * top, right, bottom, left, then optional floor/ceiling (Z faces).
  * Host Space: +X right, +Y up, +Z up. Margins inset inward; bleed/slug outward.
  */
-
-#include "ProjectJson.h"
 
 namespace rigkit {
 namespace project {

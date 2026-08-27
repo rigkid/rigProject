@@ -1,12 +1,14 @@
 #include "ProjectSerializer.h"
+
+#include "ecs/MEcs.h"
+#include "CProject.h"
+#include "CTransient.h"
+#include "EntityIdRemap.h"
+
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include "CProject.h"
-#include "CTransient.h"
-#include "EntityIdRemap.h"
-#include "ecs/MEcs.h"
 
 namespace rigkit {
 namespace project {

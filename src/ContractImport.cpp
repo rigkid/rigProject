@@ -1,17 +1,9 @@
 #include "ContractImport.h"
 
-#include <algorithm>
-#include <cmath>
-#include <fstream>
-#include <optional>
-#include <sstream>
-#include <unordered_map>
-#include <unordered_set>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <spdlog/spdlog.h>
-
+#include "core/json.h"
+#include "core/TypeJson.h"
+#include "ecs/MEcs.h"
+#include "ecs/PropertyReflection.h"
 #include "CArc.h"
 #include "CCadBoolean.h"
 #include "CCadBox.h"
@@ -35,7 +27,6 @@
 #include "CMusicTransport.h"
 #include "CNurbsSurface.h"
 #include "CPage.h"
-#include "FaceInsets.h"
 #include "CPalette.h"
 #include "CPath.h"
 #include "CPolygon.h"
@@ -50,14 +41,22 @@
 #include "CTransform.h"
 #include "CTween.h"
 #include "EntityProperty.h"
+#include "FaceInsets.h"
 #include "MeshFaces.h"
 #include "PrimitiveBounds.h"
 #include "ProjectJson.h"
-#include "core/TypeJson.h"
-#include "core/json.h"
-#include "ecs/MEcs.h"
-#include "ecs/PropertyReflection.h"
 #include "rig/create.h"
+
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <optional>
+#include <spdlog/spdlog.h>
+#include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace rigkit {
 namespace project {

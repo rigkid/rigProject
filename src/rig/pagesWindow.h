@@ -6,14 +6,14 @@
  * `focusPage` / `fitPages` on the same helpers as `rig/pages.h`.
  */
 
-#include "CPage.h"
-#include "IWindow.h"
-#include "core/RigKitEngine.h"
-#include "ecs/MEcs.h"
-#include "rig/pages.h"
-
 #include <cstdio>
 #include <imgui.h>
+
+#include "core/RigKitEngine.h"
+#include "ecs/MEcs.h"
+#include "CPage.h"
+#include "IWindow.h"
+#include "rig/pages.h"
 
 namespace rig {
 

@@ -1,12 +1,14 @@
 #include "rigProject.h"
-#include <spdlog/spdlog.h>
-#include "CPage.h"
-#include "CProject.h"
-#include "ComponentSerializers.h"
-#include "core/RigKitEngine.h"
+
 #include "core/pack/PackRegistry.h"
+#include "core/RigKitEngine.h"
 #include "ecs/MEcs.h"
 #include "ecs/SystemRegistry.h"
+#include "ComponentSerializers.h"
+#include "CPage.h"
+#include "CProject.h"
+
+#include <spdlog/spdlog.h>
 
 namespace rigkit {
 namespace {

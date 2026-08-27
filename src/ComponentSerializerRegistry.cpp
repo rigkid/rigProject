@@ -1,7 +1,8 @@
 #include "ComponentSerializerRegistry.h"
+
 #include <cstdint>
-#include <unordered_set>
 #include <spdlog/spdlog.h>
+#include <unordered_set>
 
 namespace rigkit {
 namespace project {

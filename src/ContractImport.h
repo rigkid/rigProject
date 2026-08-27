@@ -8,12 +8,11 @@
  */
 
 #include <array>
+#include <entt/entt.hpp>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <entt/entt.hpp>
 
 #include "core/U_core.h"
 #include "ComponentSerializerRegistry.h"

@@ -9,6 +9,7 @@
 
 #include <functional>
 #include <string>
+
 #include "ComponentSerializerRegistry.h"
 #include "ProjectJson.h"
 

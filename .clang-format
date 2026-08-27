@@ -31,8 +31,13 @@ IncludeCategories:
     Priority: 1
   - Regex: '^<'
     Priority: 2
-  - Regex: '^"'
+  # Host before packs/ (see docs/includes.md). Short pack names ("rig.h") stay Priority 5.
+  - Regex: '^"(core|ecs|rendering)/'
     Priority: 3
+  - Regex: '^"packs/'
+    Priority: 4
+  - Regex: '^"'
+    Priority: 5
 
 SpaceAfterCStyleCast: false
 SpaceBeforeCpp11BracedList: false

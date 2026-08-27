@@ -65,7 +65,7 @@ auto result = rigkit::project::importContractJson(*ecs, jsonText, path, doc->ser
 if (!result.ok) { /* result.error */ }
 ```
 
-Pass the document pack's registry when available. Relationship still remaps by Contract document id (not `eN` handles). UI panel / control / action rows stay on `ContractImportResult` as layout only. `rig.media.code`, paint.solid present fallback, and material→fill stay special-cased.
+Pass the document pack's registry when available. Relationship still remaps by Contract document id (not `eN` handles). UI panel / control / action rows stay on `ContractImportResult` as layout only. `rig.media.code`, paint.solid present fallback, and material to fill stay special-cased.
 
 ## Build Example
 

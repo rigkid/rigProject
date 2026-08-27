@@ -1,10 +1,11 @@
 #pragma once
 
 #include <string>
+
+#include "core/pack/IPack.h"
 #include "ComponentSerializerRegistry.h"
 #include "ContractImport.h"
 #include "ProjectSerializer.h"
-#include "core/pack/IPack.h"
 
 namespace rigkit {
 

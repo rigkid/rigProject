@@ -6,12 +6,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <miniz.h>
 #include <random>
+#include <spdlog/spdlog.h>
 #include <system_error>
 #include <vector>
-
-#include <miniz.h>
-#include <spdlog/spdlog.h>
 
 namespace fs = std::filesystem;
 

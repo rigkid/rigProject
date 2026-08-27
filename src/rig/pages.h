@@ -9,11 +9,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <entt/entt.hpp>
 #include <string>
 #include <vector>
 
-#include <entt/entt.hpp>
-
+#include "ecs/MEcs.h"
 #include "CDrawStyle.h"
 #include "CGroup.h"
 #include "CLayer.h"
@@ -22,7 +22,6 @@
 #include "CRectangle.h"
 #include "CRelationship.h"
 #include "CTransform.h"
-#include "ecs/MEcs.h"
 
 namespace rigkit {
 class MEcs;
