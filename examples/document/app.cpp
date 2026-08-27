@@ -86,7 +86,7 @@ void makeCard(entt::entity root, float cx, float cy, const char* name, int kind)
 	const float midY = cy;
 
 	if (kind == 0) {
-		// Open — parting curtains + warm gap light.
+		// Open - parting curtains + warm gap light.
 		auto leftCurtain =
 			rig::makeRect(left + 18.f, top + 16.f, 72.f, kCardH - 32.f, curtain(), "open-L-" + id);
 		attach(leftCurtain, root);
@@ -96,7 +96,7 @@ void makeCard(entt::entity root, float cx, float cy, const char* name, int kind)
 		auto glow = rig::makeEllipse(midX, midY, 36.f, 70.f, warmLight(), "open-glow-" + id);
 		attach(glow, root);
 	} else if (kind == 1) {
-		// Look — concentric iris + coral pupil.
+		// Look - concentric iris + coral pupil.
 		auto outer = rig::makeCircle(midX, midY, 42.f, inkLine(0.45f, 2.5f), "look-ring-" + id);
 		attach(outer, root);
 		auto mid = rig::makeCircle(midX, midY, 28.f, ink(0.08f), "look-iris-" + id);
@@ -104,7 +104,7 @@ void makeCard(entt::entity root, float cx, float cy, const char* name, int kind)
 		auto pupil = rig::makeCircle(midX, midY, 12.f, accent(), "look-pupil-" + id);
 		attach(pupil, root);
 	} else {
-		// Close — horizontal shutter bars.
+		// Close - horizontal shutter bars.
 		const float barH = 14.f;
 		const float barW = kCardW - 48.f;
 		const float barX = left + 24.f;
@@ -116,7 +116,7 @@ void makeCard(entt::entity root, float cx, float cy, const char* name, int kind)
 		}
 	}
 
-	// Tab chip under the card — colour cue for the page name without text.
+	// Tab chip under the card - colour cue for the page name without text.
 	const CDrawStyle tabs[] = {rig::fill(0.30f, 0.45f, 0.70f), accent(),
 							   rig::fill(0.28f, 0.55f, 0.40f)};
 	auto tab = rig::makeRect(cx - 18.f, top + kCardH + 14.f, 36.f, 8.f, tabs[kind], "tab-" + id);
@@ -126,7 +126,7 @@ void makeCard(entt::entity root, float cx, float cy, const char* name, int kind)
 } // namespace
 
 void DocumentApp::setup() {
-	spdlog::info("document — Install Cue storyboard (.rig round-trip)");
+	spdlog::info("document - Install Cue storyboard (.rig round-trip)");
 	m_engine->setClearColor(0.94f, 0.93f, 0.90f, 1.0f);
 
 	auto* packs = m_engine->getPackManager();
@@ -256,12 +256,12 @@ void DocumentApp::update(float) {
 		return;
 	}
 	if (m_phase == 2) {
-		// Load ran last frame; entity ids are new — refresh root + session selection.
+		// Load ran last frame; entity ids are new - refresh root + session selection.
 		m_root = entt::null;
 		fitBoard();
 		applyActiveSelection();
 		auto* ecs = m_engine->getECSManager();
-		spdlog::info("document — round-trip done entities={} path='{}'",
+		spdlog::info("document - round-trip done entities={} path='{}'",
 					 ecs ? ecs->getEntityCount() : 0, m_docPath);
 		m_phase = 3;
 	}

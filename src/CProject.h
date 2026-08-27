@@ -8,7 +8,7 @@ namespace rigkit {
 namespace ecs {
 
 /**
- * @brief Project envelope — data only.
+ * @brief Project envelope - data only.
  * @details Singleton metadata entity. Serialized into the root `project`
  * object (and Contract `document` keys), not as a normal entity component blob.
  * `colorSpace` speaks `document.colorSpace` (default `srgb`).
@@ -26,7 +26,7 @@ struct CProject {
 	std::string defaultUnit = "px"; // px | mm | in
 	std::string colorSpace = "srgb"; ///< Speaks document.colorSpace; rgba/rgb meaning
 	std::string pdfX; ///< e.g. PDF/X-4; empty = not PDF/X
-	std::string outputCondition; ///< OutputConditionIdentifier (FOGRA39, …)
+	std::string outputCondition; ///< OutputConditionIdentifier (FOGRA39, ...)
 	std::string outputRegistry = "http://www.color.org";
 	std::string outputProfile; ///< Host path to ICC for DestOutputProfile
 	std::string trapped = "unknown"; ///< unknown | true | false

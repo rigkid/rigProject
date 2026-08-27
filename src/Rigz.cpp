@@ -148,7 +148,7 @@ PackageOpen openRigzArchive(const std::string& path) {
 
 	out.rigPath = (root / rootRigRel).string();
 	out.ok = true;
-	spdlog::info("[rigz] extracted {} → {}", path, out.packetRoot);
+	spdlog::info("[rigz] extracted {} to {}", path, out.packetRoot);
 	return out;
 }
 

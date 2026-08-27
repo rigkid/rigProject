@@ -2,7 +2,7 @@
 
 /**
  * @file
- * @brief Page board helpers — make `CPage` entities and pan / zoom the board.
+ * @brief Page board helpers - make `CPage` entities and pan / zoom the board.
  * @details Header-only over rigComponent POD, so an app includes it and calls;
  * there is no page system to register. PDF emit is rigPdf.
  */
@@ -32,7 +32,7 @@ namespace rig {
 rigkit::MEcs* currentEcs();
 
 /**
- * @brief Pointer + view for `pollPageNav` — same space as `CTransform` (design).
+ * @brief Pointer + view for `pollPageNav` - same space as `CTransform` (design).
  * @details `view*` is the canvas hole. Convert window-client / ImGui pixels
  * with `design / framebuffer` from `getPresentSize`. `blocked` when UI ate the
  * mouse. LMB or MMB pans; wheel zooms toward the cursor; `wheelH` pans X.
@@ -51,7 +51,7 @@ struct PageNavInput {
 };
 
 /**
- * @brief Stacked `CPage` board — include this header and call; no extra system.
+ * @brief Stacked `CPage` board - include this header and call; no extra system.
  * @details First `makePage` writes a `CProject` (or reuses one) and a board
  * group. Later pages sit under the last, centered on the board X. Shapes stay
  * page-local; call `placeOnPage` after `make*`. Board `CTransform` is the view
@@ -98,7 +98,7 @@ void zoomPages(float factor, float pivotX, float pivotY);
 void fitPages();
 float pageZoom();
 
-/** @brief Wheel over the canvas — pans Y. Prefer `pollPageNav` for zoom + pan. */
+/** @brief Wheel over the canvas - pans Y. Prefer `pollPageNav` for zoom + pan. */
 void pollPageScroll(float wheel, bool uiWantsMouse);
 
 /** @brief Pan / zoom / first-fit. No-op when @p in.blocked except for storing the view. */
@@ -234,7 +234,7 @@ inline void applyLayout() {
 	float y = 0.f;
 
 	if (s.layout == PageLayout::Spread) {
-		// Recto-first, left binding: page 0 alone on the right; then 1|2, 3|4, …
+		// Recto-first, left binding: page 0 alone on the right; then 1|2, 3|4, ...
 		int i = 0;
 		const int n = static_cast<int>(s.pages.size());
 		while (i < n) {
@@ -279,7 +279,7 @@ inline void applyLayout() {
 			}
 			y += rowH + kPageGap;
 		}
-		// Hide nothing in Spread — all pages stay visible in their pairs.
+		// Hide nothing in Spread - all pages stay visible in their pairs.
 		s.stackY = y;
 		return;
 	}

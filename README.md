@@ -15,7 +15,7 @@ auto page = rig::makePage(520.f, 380.f); // CPage + board + paper plate
 auto c = rig::makeCircle(260.f, 190.f, 40.f);
 rig::placeOnPage(c);
 
-// update — design-space view + pointer (central dock * design/fb)
+// update - design-space view + pointer (central dock * design/fb)
 rig::pollPageNav(nav);
 rig::setPageLayout(rig::PageLayout::Single); // or Stack
 // window (needs rigImGui):
@@ -26,7 +26,7 @@ Pages sit under each other on a board group, centered in the view. Drag pans; wh
 
 ## Lingo: document vs project
 
-- **Document** = the portable `.rig` file — Contract JSON (`entities[].components` with `rig.*` schema ids). What RigViewer presents and RigPlayer plays.
+- **Document** = the portable `.rig` file - Contract JSON (`entities[].components` with `rig.*` schema ids). What RigViewer presents and RigPlayer plays.
 - **Project** = the host-side working envelope (`CProject` / `CPage`) inside a RigKit host session. This pack owns it.
 
 Contract JSON is the only `.rig` dialect: what this pack writes is what RigViewer reads. `tools/contract_smoke` ("save is readable by Contract import") holds that seam shut.
@@ -34,9 +34,9 @@ Contract JSON is the only `.rig` dialect: what this pack writes is what RigViewe
 ## Serialize (`.rig` document)
 
 - Root shape: `{ "rig": "<contract version>", "document": {...}, "entities": [...] }`
-- Entity shape: `{ "id": "e12", "components": { "rig.spatial.transform": {...} } }` — the name rides in `rig.meta.named`
+- Entity shape: `{ "id": "e12", "components": { "rig.spatial.transform": {...} } }` - the name rides in `rig.meta.named`
 - Every codec carries a schema id: `rig.*` where the Contract defines the shape, `x.<vendor>.*` for host-only data. Registration refuses a codec without one, so nothing reaches a file unlabelled.
-- **This pack walks codecs; it does not own every codec.** Envelope + `CPage` / page-anchor codecs live here, and so do the codecs for rigComponent's PODs (`ComponentSerializers.cpp` — this pack already depends on rigComponent, and keeping them here lets a data-only app link rigComponent without pulling the registry). Domain packs and apps register their own via `registerSerializer`. Use `project::addSerializer<T>(...)` instead of copying the registry glue.
+- **This pack walks codecs; it does not own every codec.** Envelope + `CPage` / page-anchor codecs live here, and so do the codecs for rigComponent's PODs (`ComponentSerializers.cpp` - this pack already depends on rigComponent, and keeping them here lets a data-only app link rigComponent without pulling the registry). Domain packs and apps register their own via `registerSerializer`. Use `project::addSerializer<T>(...)` instead of copying the registry glue.
 - Skips: Selection (session), Canvas/Texture (non-portable), document metadata entity in `entities[]`
 - Optional root extension writer/reader for domain envelopes (e.g. plotter)
 

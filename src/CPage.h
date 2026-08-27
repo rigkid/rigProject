@@ -8,7 +8,7 @@ namespace rigkit {
 namespace ecs {
 
 /**
- * @brief Page record — data only. Speaks `rig.layout.page`.
+ * @brief Page record - data only. Speaks `rig.layout.page`.
  * @details Empty `unit` inherits `CProject::defaultUnit`. Margins / bleed /
  * slug are face insets on the local AABB (CSS XY order + optional Z min/max),
  * same cuboid as `rig.spatial.anchor`. Margins inset inward; bleed/slug
@@ -17,14 +17,14 @@ namespace ecs {
  *
  * `originAnchor` is the 3×3 face cell (`rig.spatial.anchor.point`) that is
  * page-local (0,0). It rides the page struct for host convenience but travels
- * as its own component — the page schema does not carry an anchor field.
+ * as its own component - the page schema does not carry an anchor field.
  * Top-left is the Contract default, so that value writes no component at all.
- * Origin is an offset — axes do not invert.
+ * Origin is an offset - axes do not invert.
  */
 struct CPage {
 	std::string name = "Page";
 	int index = 0;
-	std::string unit; // empty → inherit defaultUnit
+	std::string unit; // empty to inherit defaultUnit
 	float width = 1920.0f;
 	float height = 1080.0f;
 	float marginTop = 0.0f;

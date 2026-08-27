@@ -2,8 +2,8 @@
   "name": "document",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "rigProject example — Install Cue storyboard",
-  "window": { "width": 1100, "height": 700, "title": "rigProject — document" },
+  "description": "rigProject example - Install Cue storyboard",
+  "window": { "width": 1100, "height": 700, "title": "rigProject - document" },
   "dependencies": [
     {
       "name": "rigComponent",

@@ -3,7 +3,7 @@
 /**
  * @file
  * @brief Read a Contract document into the ECS and report what arrived.
- * @details Panel, control, and action rows carry layout only — the values they point at live
+ * @details Panel, control, and action rows carry layout only - the values they point at live
  * on the entities.
  */
 
@@ -21,10 +21,10 @@ namespace rigkit {
 namespace project {
 
 /**
- * @brief Contract JSON (rig\.* keys) → host POD import report + UI layout rows.
+ * @brief Contract JSON (rig\.* keys) to host POD import report + UI layout rows.
  * @details Clears the ECS and writes `rigComponent` PODs including `CModLfo` /
  * `CModBinding`. Property values live on entities (GetProperties); UI panel /
- * control / action rows here are layout only — never a second property store.
+ * control / action rows here are layout only - never a second property store.
  * Modulators advance via `SModulators` (Update), not a free-function tick.
  */
 struct ContractImportResult {
@@ -85,7 +85,7 @@ struct ContractImportResult {
 	std::vector<Group> groups;
 	std::vector<Control> controls;
 	std::vector<Action> actions;
-	/// Contract entity id → live entt handle (for UI target lookup).
+	/// Contract entity id to live entt handle (for UI target lookup).
 	std::unordered_map<std::string, entt::entity> entities;
 };
 
@@ -119,7 +119,7 @@ ContractImportResult importContractJson(MEcs& ecs, const std::string& jsonText,
 /**
  * @brief Import using registered document codecs for component blobs.
  * @details Relationship still remaps by Contract document id (not `eN` handles).
- * UI layout rows, paint.solid present fallback, and material→fill stay special.
+ * UI layout rows, paint.solid present fallback, and material to fill stay special.
  */
 ContractImportResult importContractJson(MEcs& ecs, const std::string& jsonText,
 										const std::string& sourceLabel,

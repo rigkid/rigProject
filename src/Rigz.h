@@ -15,9 +15,9 @@ namespace project {
 /**
  * @brief Result of opening a `.rig` or `.rigz` package for import.
  * @details Packet root is the directory that contains the `.rig` and (when
- * present) a sibling `data/` folder. For `.rigz`, that is a temp extract —
+ * present) a sibling `data/` folder. For `.rigz`, that is a temp extract  - 
  * call @ref releasePackage when done. Sidecar `asset_ref.path` values resolve
- * relative to `data/` — see RigWorks interchange.
+ * relative to `data/` - see RigWorks interchange.
  */
 struct PackageOpen {
 	bool ok = false;
@@ -33,7 +33,7 @@ bool isRigzPath(const std::string& path);
 
 /**
  * @brief Prepare a document path for `importContractFile`.
- * @details `.rig` → packet root = parent directory. `.rigz` → unzip to a temp
+ * @details `.rig` to packet root = parent directory. `.rigz` to unzip to a temp
  * dir (one root `.rig` + optional `data/`). Other extensions fail.
  */
 PackageOpen openPackage(const std::string& path);

@@ -9,7 +9,7 @@ namespace rigkit {
 namespace project {
 namespace {
 
-/// `rig.spatial.anchor` ids for `CPage::originAnchor` — full 3×3 face.
+/// `rig.spatial.anchor` ids for `CPage::originAnchor` - full 3×3 face.
 constexpr const char* kOriginAnchorIds[] = {"top-left",	   "top-center",	"top-right",
 											"middle-left", "center",		"middle-right",
 											"bottom-left", "bottom-center", "bottom-right"};
@@ -108,7 +108,7 @@ bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j)
  * @brief Page anchor as `rig.spatial.anchor`, the component that owns it.
  * @details Written from the page struct rather than a second POD so the host
  * keeps one anchor field. Top-left is what an absent component means, so it
- * writes nothing — a page that never moved its origin stays clean on the wire.
+ * writes nothing - a page that never moved its origin stays clean on the wire.
  */
 bool serializePageAnchor(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!reg.all_of<ecs::CPage>(e)) {

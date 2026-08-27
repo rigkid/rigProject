@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @brief Pages panel — include and `createWindow<rig::PagesWindow>()`.
+ * @brief Pages panel - include and `createWindow<rig::PagesWindow>()`.
  * @details Needs **rigImGui** (`IWindow`). View options call `setPageLayout` /
  * `focusPage` / `fitPages` on the same helpers as `rig/pages.h`.
  */

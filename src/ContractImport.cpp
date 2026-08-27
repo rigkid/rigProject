@@ -289,7 +289,7 @@ const std::unordered_set<std::string> kKnown = {
 	"x.rigkit.palette_shade",
 };
 
-/// Any geometry schema at all — the paint-only fallback must not fire when the
+/// Any geometry schema at all - the paint-only fallback must not fire when the
 /// entity already carries something drawable.
 bool hasGeometry(const json& comps) {
 	for (auto it = comps.begin(); it != comps.end(); ++it) {
@@ -736,7 +736,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 				}
 				ecs.addComponent(entity, palette);
 			}
-		} // !codecs — POD blobs come from applyDeserializers when a registry is passed
+		} // !codecs - POD blobs come from applyDeserializers when a registry is passed
 
 		if (comps.contains("rig.ui.panel")) {
 			const auto& p = comps["rig.ui.panel"];
@@ -1266,7 +1266,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 				continue;
 			}
 			auto& xf = ecs.getComponent<rigkit::ecs::CTransform>(entity);
-			// Near-identity quat (Contract default) → aim at scene like the web viewer.
+			// Near-identity quat (Contract default) to aim at scene like the web viewer.
 			if (std::fabs(xf.rotation.w) < 0.999f) {
 				continue;
 			}
@@ -1278,7 +1278,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 				target = xf.position + glm::vec3(0.f, 0.f, -1.f);
 			}
 			rig::lookAt(xf, xf.position, target);
-			result.notes.push_back("camera aimed at scene (identity rotation → lookAt)");
+			result.notes.push_back("camera aimed at scene (identity rotation to lookAt)");
 		}
 	}
 
@@ -1288,7 +1288,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 						 result.skipped.end());
 
 	result.ok = true;
-	spdlog::info("[ContractImport] {} — {} entities, {} geometry (from {})", result.title,
+	spdlog::info("[ContractImport] {} - {} entities, {} geometry (from {})", result.title,
 				 result.entityCount, result.geometryCount,
 				 sourceLabel.empty() ? "memory" : sourceLabel);
 	for (const auto& note : result.notes) {

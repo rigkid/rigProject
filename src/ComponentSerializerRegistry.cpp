@@ -16,12 +16,12 @@ void ComponentSerializerRegistry::registerSerializer(ComponentSerializer seriali
 	// Refuse rather than invent one: a guessed id would write documents that
 	// look valid and mean nothing to any other host.
 	if (serializer.schemaId.empty()) {
-		spdlog::error("[rigProject] codec '{}' has no schemaId — not registered", serializer.name);
+		spdlog::error("[rigProject] codec '{}' has no schemaId - not registered", serializer.name);
 		return;
 	}
 	for (const auto& existing : m_serializers) {
 		if (existing.schemaId == serializer.schemaId) {
-			spdlog::error("[rigProject] codec '{}' reuses schemaId '{}' from '{}' — not registered",
+			spdlog::error("[rigProject] codec '{}' reuses schemaId '{}' from '{}' - not registered",
 						  serializer.name, serializer.schemaId, existing.name);
 			return;
 		}

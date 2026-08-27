@@ -194,7 +194,7 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	const auto& entities = root["entities"];
 	// Forward order matches save/collectEntities creation order so layered 2D
 	// present (shadow under plate under art) survives round-trip. Parents are
-	// remapped after all entities exist — creation order does not matter for that.
+	// remapped after all entities exist - creation order does not matter for that.
 	for (const ordered_json& entityObj : entities) {
 		if (!entityObj.contains("id") || !entityObj.contains("components")) {
 			continue;

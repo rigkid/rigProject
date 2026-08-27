@@ -1132,7 +1132,7 @@ bool serializeDrawStyle(entt::registry& reg, entt::entity e, ordered_json& j) {
 }
 
 // CDrawStyle spans two wire components, so both codecs patch the same struct
-// instead of replacing it — whichever key is read second must not wipe the first.
+// instead of replacing it - whichever key is read second must not wipe the first.
 bool deserializeDrawStyle(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	auto& d = reg.get_or_emplace<ecs::CDrawStyle>(e);
 	if (j.contains("fillRgba")) {
@@ -1164,7 +1164,7 @@ bool serializeStrokeStyle(entt::registry& reg, entt::entity e, ordered_json& j) 
 	}
 	const auto& d = reg.get<ecs::CDrawStyle>(e);
 	const ecs::CDrawStyle plain;
-	// Silence on defaults — most strokes have nothing to add here, and every
+	// Silence on defaults - most strokes have nothing to add here, and every
 	// omitted key is bytes off documents that hold thousands of styled entities.
 	if (d.strokeCap == plain.strokeCap && d.strokeJoin == plain.strokeJoin &&
 		d.dashPattern.empty() && d.dashOffset == plain.dashOffset) {

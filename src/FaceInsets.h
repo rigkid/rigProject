@@ -31,8 +31,8 @@ struct FaceInsets {
 
 /**
  * @brief Expand Contract margin/bleed/slug wire into six channels.
- * @details Accepts a number or array length 1–6 (CSS + optional Z pair).
- * Length 5 → both Z faces get the fifth value. Lengths 1–4 leave Z at 0.
+ * @details Accepts a number or array length 1-6 (CSS + optional Z pair).
+ * Length 5 to both Z faces get the fifth value. Lengths 1-4 leave Z at 0.
  */
 template <typename Json>
 bool expandFaceInsets(const Json& src, FaceInsets& out) {

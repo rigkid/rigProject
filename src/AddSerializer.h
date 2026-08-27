@@ -16,7 +16,7 @@ namespace project {
 /**
  * @brief Register a typed component codec on a document registry.
  * @details Packs that own portable PODs call this from setup() (via
- * `rigProject::registerSerializer` / the registry). One schema id per call —
+ * `rigProject::registerSerializer` / the registry). One schema id per call  - 
  * the same C++ type may register twice when the Contract splits one POD across
  * two keys (e.g. page + anchor).
  */
@@ -69,7 +69,7 @@ void addBoolMemberSerializer(ComponentSerializerRegistry& registry, const char* 
 }
 
 /**
- * @brief Empty marker component — wire value is `{}`.
+ * @brief Empty marker component - wire value is `{}`.
  */
 template <typename T>
 void addMarkerSerializer(ComponentSerializerRegistry& registry, const char* key,

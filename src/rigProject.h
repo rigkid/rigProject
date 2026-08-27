@@ -31,7 +31,7 @@ class rigProject : public IPack {
 
 	/**
 	 * @brief Build a path using the preferred extension when @p stemOrPath has none.
-	 * @param stemOrPath Absolute/relative path or bare stem (`show` → `show.rig`).
+	 * @param stemOrPath Absolute/relative path or bare stem (`show` to `show.rig`).
 	 */
 	std::string documentPath(const std::string& stemOrPath) const;
 
