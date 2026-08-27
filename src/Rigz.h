@@ -1,5 +1,12 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Open a `.rig` or `.rigz` package and resolve the asset paths inside it.
+ * @details A `.rigz` unzips to a temp directory, so pair every `openPackage` with
+ * `releasePackage`.
+ */
+
 #include <string>
 
 namespace rigkit {
@@ -33,6 +40,14 @@ PackageOpen openPackage(const std::string& path);
 
 /** @brief Delete a temporary extract from @ref openPackage (no-op if not temp). */
 void releasePackage(PackageOpen& opened);
+
+/**
+ * @brief Write a `.rigz` with exactly one `.rig` at the archive root.
+ * @details Optional sidecars under @p packetRoot (`data/`, `assets/`) are stored
+ * with those prefixes. @p rigPath is the JSON document to embed.
+ */
+bool writeRigz(const std::string& destPath, const std::string& rigPath,
+			   const std::string& packetRoot, std::string* error = nullptr);
 
 /**
  * @brief Resolve a sidecar or host-root `asset_ref.path` against a packet root.

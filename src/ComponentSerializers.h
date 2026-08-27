@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Registration entry point for `rigComponent`'s portable POD codecs.
+ */
+
 namespace rigkit {
 namespace project {
 

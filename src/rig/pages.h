@@ -1,5 +1,12 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Page board helpers — make `CPage` entities and pan / zoom the board.
+ * @details Header-only over rigComponent POD, so an app includes it and calls;
+ * there is no page system to register. PDF emit is rigPdf.
+ */
+
 #include <algorithm>
 #include <cmath>
 #include <string>

@@ -14,11 +14,11 @@ struct ComponentSerializer {
 	/// Registry-local name, also what the inspector shows.
 	std::string name;
 	/**
-	 * @brief Wire key: a Contract schema id, or an `x.<vendor>.<name>` extension.
+	 * @brief Wire key: a Contract schema id, or an x\.\<vendor\>\.\<name\> extension.
 	 * @details Required — registration refuses a codec without one, because a
-	 * component with no id cannot be written into a document. Use a `rig.*` id
+	 * component with no id cannot be written into a document. Use a @c rig\.* id
 	 * only where the Contract defines that schema; anything host-specific takes
-	 * `x.rigkit.<name>`. Claiming a `rig.*` id the Contract does not have makes
+	 * x\.rigkit\.\<name\>. Claiming a @c rig\.* id the Contract does not have makes
 	 * a document that validates nowhere.
 	 */
 	std::string schemaId;

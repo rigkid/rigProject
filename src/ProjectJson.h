@@ -1,5 +1,11 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Ordered JSON read and write for Rig documents, plus the Contract version stamp.
+ * @details Both helpers log and return empty on failure rather than throwing.
+ */
+
 #include <fstream>
 #include <spdlog/spdlog.h>
 #include <string>

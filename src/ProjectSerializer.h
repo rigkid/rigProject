@@ -1,5 +1,12 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Save and load the ECS as a Rig Contract document other hosts can read.
+ * @details Component codecs come from the registry; packs add root-level extensions through
+ * the writer and reader hooks.
+ */
+
 #include <functional>
 #include <string>
 #include "ComponentSerializerRegistry.h"

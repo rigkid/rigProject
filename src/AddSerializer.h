@@ -1,5 +1,11 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Templates that register one component codec on a document registry.
+ * @details They stay inline so `rigProject` never needs to see the component type.
+ */
+
 #include <functional>
 #include <string>
 #include "ComponentSerializerRegistry.h"

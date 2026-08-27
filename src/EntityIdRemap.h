@@ -1,5 +1,11 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Entity handles as document `id` strings, and reference fixup after a load.
+ * @details Run the remap once every entity exists, so parent references resolve.
+ */
+
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <string>

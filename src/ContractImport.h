@@ -1,5 +1,12 @@
 #pragma once
 
+/**
+ * @file
+ * @brief Read a Contract document into the ECS and report what arrived.
+ * @details Panel, control, and action rows carry layout only — the values they point at live
+ * on the entities.
+ */
+
 #include <array>
 #include <optional>
 #include <string>
@@ -15,7 +22,7 @@ namespace rigkit {
 namespace project {
 
 /**
- * @brief Contract JSON (`rig.*` keys) → host POD import report + UI layout rows.
+ * @brief Contract JSON (rig\.* keys) → host POD import report + UI layout rows.
  * @details Clears the ECS and writes `rigComponent` PODs including `CModLfo` /
  * `CModBinding`. Property values live on entities (GetProperties); UI panel /
  * control / action rows here are layout only — never a second property store.

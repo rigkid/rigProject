@@ -199,6 +199,107 @@ void releasePackage(PackageOpen& opened) {
 	opened.rigPath.clear();
 }
 
+namespace {
+
+std::string zipSlash(std::string s) {
+	std::replace(s.begin(), s.end(), '\\', '/');
+	return s;
+}
+
+bool addFileToZip(mz_zip_archive& zip, const fs::path& src, const std::string& archiveName,
+				  std::string* error) {
+	const std::string name = zipSlash(archiveName);
+	if (name.empty() || !safeZipPath(name)) {
+		if (error) {
+			*error = "invalid zip path " + name;
+		}
+		return false;
+	}
+	if (!mz_zip_writer_add_file(&zip, name.c_str(), src.string().c_str(), nullptr, 0,
+								MZ_DEFAULT_COMPRESSION)) {
+		if (error) {
+			*error = "failed to add " + name;
+		}
+		return false;
+	}
+	return true;
+}
+
+bool addTreeToZip(mz_zip_archive& zip, const fs::path& root, const std::string& prefix,
+				  std::string* error) {
+	const fs::path dir = root / prefix;
+	std::error_code ec;
+	if (!fs::exists(dir, ec)) {
+		return true;
+	}
+	for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
+		if (ec || !entry.is_regular_file()) {
+			continue;
+		}
+		const fs::path rel = fs::relative(entry.path(), root, ec);
+		if (ec || rel.empty()) {
+			continue;
+		}
+		if (!addFileToZip(zip, entry.path(), rel.generic_string(), error)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+} // namespace
+
+bool writeRigz(const std::string& destPath, const std::string& rigPath,
+			   const std::string& packetRoot, std::string* error) {
+	if (destPath.empty() || rigPath.empty()) {
+		if (error) {
+			*error = "empty path";
+		}
+		return false;
+	}
+	std::error_code ec;
+	if (!fs::exists(rigPath, ec)) {
+		if (error) {
+			*error = "missing .rig";
+		}
+		return false;
+	}
+	if (const auto parent = fs::path(destPath).parent_path(); !parent.empty()) {
+		fs::create_directories(parent, ec);
+	}
+
+	mz_zip_archive zip{};
+	if (!mz_zip_writer_init_file(&zip, destPath.c_str(), 0)) {
+		if (error) {
+			*error = "cannot create .rigz";
+		}
+		return false;
+	}
+
+	const std::string rootRig = fs::path(destPath).stem().string() + ".rig";
+	if (!addFileToZip(zip, fs::path(rigPath), rootRig, error)) {
+		mz_zip_writer_end(&zip);
+		return false;
+	}
+	if (!packetRoot.empty()) {
+		if (!addTreeToZip(zip, fs::path(packetRoot), "data", error) ||
+			!addTreeToZip(zip, fs::path(packetRoot), "assets", error)) {
+			mz_zip_writer_end(&zip);
+			return false;
+		}
+	}
+	if (!mz_zip_writer_finalize_archive(&zip)) {
+		mz_zip_writer_end(&zip);
+		if (error) {
+			*error = "failed to finalize .rigz";
+		}
+		return false;
+	}
+	mz_zip_writer_end(&zip);
+	spdlog::info("[rigz] wrote {} (root {})", destPath, rootRig);
+	return true;
+}
+
 std::string resolvePacketAssetPath(const std::string& packetRoot, const std::string& assetPath) {
 	if (assetPath.empty()) {
 		return assetPath;
