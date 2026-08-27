@@ -648,12 +648,15 @@ inline void pollPageNav(const PageNavInput& in) {
 		return;
 	}
 	const bool viewReady = s.viewW > 1.f && s.viewH > 1.f;
+	const bool overView =
+		viewReady && in.mouseX >= in.viewX && in.mouseX <= in.viewX + in.viewW &&
+		in.mouseY >= in.viewY && in.mouseY <= in.viewY + in.viewH;
 	const bool viewMoved =
 		viewReady && (std::fabs(s.viewW - s.fitViewW) > 8.f || std::fabs(s.viewH - s.fitViewH) > 8.f);
 	if (viewReady && !s.userNav && (!s.fitted || viewMoved) && !s.dragging) {
 		fitPages();
 	}
-	if (in.blocked) {
+	if (in.blocked && !overView) {
 		s.dragging = false;
 		return;
 	}
