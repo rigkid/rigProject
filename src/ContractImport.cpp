@@ -277,6 +277,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.story.paragraph",
 	"rig.story.paragraph_style",
 	"rig.story.character_style",
+	"rig.story.image",
 	"rig.story.table",
 	"rig.pixel.palette",
 	"rig.media.text",
@@ -287,6 +288,7 @@ const std::unordered_set<std::string> kKnown = {
 	"x.rigkit.stroke_style",
 	"x.rigkit.light_shading",
 	"x.rigkit.palette_shade",
+	"x.rigkit.swatch_library",
 };
 
 /// Any geometry schema at all - the paint-only fallback must not fire when the
