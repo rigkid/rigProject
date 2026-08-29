@@ -1637,6 +1637,9 @@ bool serializeText(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (!t.useKerning) {
 		j["useKerning"] = false;
 	}
+	if (t.tracking != 0.f) {
+		j["tracking"] = t.tracking;
+	}
 	return true;
 }
 
@@ -1659,6 +1662,7 @@ bool deserializeText(entt::registry& reg, entt::entity e, const ordered_json& j)
 	}
 	t.features = j.value("features", t.features);
 	t.useKerning = j.value("useKerning", t.useKerning);
+	t.tracking = j.value("tracking", t.tracking);
 	reg.emplace_or_replace<ecs::CText>(e, std::move(t));
 	return true;
 }

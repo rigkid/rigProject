@@ -45,6 +45,12 @@ void syncEnvelopeFromProject(const ecs::CProject& doc, ordered_json& envelope) {
 	if (!doc.outputCondition.empty()) {
 		envelope["outputCondition"] = doc.outputCondition;
 	}
+	if (!doc.outputRegistry.empty()) {
+		envelope["outputRegistry"] = doc.outputRegistry;
+	}
+	if (!doc.outputProfile.empty()) {
+		envelope["outputProfile"] = doc.outputProfile;
+	}
 	if (!doc.trapped.empty() && doc.trapped != "unknown") {
 		envelope["trapped"] = doc.trapped;
 	}
@@ -65,6 +71,8 @@ void applyEnvelopeToProject(ecs::CProject& doc, const ordered_json& envelope) {
 	doc.colorSpace = envelope.value("colorSpace", doc.colorSpace);
 	doc.pdfX = envelope.value("pdfX", doc.pdfX);
 	doc.outputCondition = envelope.value("outputCondition", doc.outputCondition);
+	doc.outputRegistry = envelope.value("outputRegistry", doc.outputRegistry);
+	doc.outputProfile = envelope.value("outputProfile", doc.outputProfile);
 	doc.trapped = envelope.value("trapped", doc.trapped);
 	if (envelope.contains("path")) {
 		doc.path = envelope.value("path", doc.path);
