@@ -110,6 +110,16 @@ void clearPages();
 /** @brief Forget board state after the app already destroyed the entities. */
 void resetPages();
 
+/** @brief Find or create the document `CProject` and bind it to the page board. */
+void ensureProject(rigkit::MEcs& ecs);
+
+/**
+ * @brief Adopt existing document pages onto the page board.
+ * @details Resets board state, parents @p sortedPages to the board, and
+ * records them as the current sequence. Does not change `PageLayout`.
+ */
+void adoptPages(rigkit::MEcs& ecs, const std::vector<entt::entity>& sortedPages);
+
 namespace pages_detail {
 
 constexpr float kPageGap = 48.f;
@@ -699,6 +709,32 @@ inline void clearPages() {
 inline void resetPages() {
 	pages_detail::rt().ecs = nullptr;
 	pages_detail::resetState();
+}
+
+inline void ensureProject(rigkit::MEcs& ecs) {
+	pages_detail::rt().ecs = &ecs;
+	pages_detail::ensureProject(ecs);
+}
+
+inline void adoptPages(rigkit::MEcs& ecs, const std::vector<entt::entity>& sortedPages) {
+	resetPages();
+	auto& s = pages_detail::rt();
+	s.ecs = &ecs;
+	pages_detail::ensureProject(ecs);
+	pages_detail::ensureBoard(ecs);
+	for (auto e : sortedPages) {
+		if (e == entt::null || !ecs.registry().valid(e)) {
+			continue;
+		}
+		if (!ecs.hasComponent<rigkit::ecs::CTransform>(e)) {
+			ecs.addComponent(e, rigkit::ecs::CTransform{});
+		}
+		pages_detail::setParent(ecs, e, s.board);
+		s.pages.push_back(e);
+	}
+	if (!s.pages.empty()) {
+		s.current = s.pages.front();
+	}
 }
 
 } // namespace rig
