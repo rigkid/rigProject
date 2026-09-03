@@ -32,6 +32,9 @@
 #include "CMusicTransport.h"
 #include "CNurbsSurface.h"
 #include "CPalette.h"
+#include "CRenderBlend.h"
+#include "CRenderVisibility.h"
+#include "CUiPanel.h"
 #include "CPath.h"
 #include "CPolygon.h"
 #include "CRectangle.h"
@@ -1536,12 +1539,199 @@ bool serializeLayerVisible(entt::registry& reg, entt::entity e, ordered_json& j)
 	if (!reg.all_of<ecs::CLayer>(e)) {
 		return false;
 	}
+	if (reg.all_of<ecs::CRenderVisibility>(e)) {
+		return false; // Contract hide bit lives on rig.render.visibility
+	}
 	const auto& l = reg.get<ecs::CLayer>(e);
 	if (l.visible) {
 		return false; // default on the wire
 	}
 	j["visible"] = false;
 	return true;
+}
+
+bool serializeRenderVisibility(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CRenderVisibility>(e)) {
+		return false;
+	}
+	const auto& v = reg.get<ecs::CRenderVisibility>(e);
+	if (v.visible) {
+		return false;
+	}
+	j["visible"] = false;
+	return true;
+}
+
+bool deserializeRenderVisibility(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CRenderVisibility v;
+	if (reg.all_of<ecs::CRenderVisibility>(e)) {
+		v = reg.get<ecs::CRenderVisibility>(e);
+	}
+	v.visible = j.value("visible", v.visible);
+	reg.emplace_or_replace<ecs::CRenderVisibility>(e, v);
+	if (reg.all_of<ecs::CLayer>(e)) {
+		reg.get<ecs::CLayer>(e).visible = v.visible;
+	}
+	return true;
+}
+
+bool serializeRenderBlend(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CRenderBlend>(e)) {
+		return false;
+	}
+	const auto& b = reg.get<ecs::CRenderBlend>(e);
+	const bool defaultMode = b.blendMode == 0;
+	const bool defaultOp = b.opacity >= 0.999f;
+	if (defaultMode && defaultOp) {
+		return false;
+	}
+	if (!defaultMode) {
+		j["blendMode"] = ecs::renderBlendToken(b.blendMode);
+	}
+	if (!defaultOp) {
+		j["opacity"] = b.opacity;
+	}
+	return true;
+}
+
+bool deserializeRenderBlend(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CRenderBlend b;
+	if (reg.all_of<ecs::CRenderBlend>(e)) {
+		b = reg.get<ecs::CRenderBlend>(e);
+	}
+	if (j.contains("blendMode")) {
+		if (j["blendMode"].is_string()) {
+			b.blendMode = ecs::renderBlendFromToken(j["blendMode"].get<std::string>());
+		} else if (j["blendMode"].is_number_integer()) {
+			b.blendMode = j["blendMode"].get<int>();
+		}
+	}
+	b.opacity = j.value("opacity", b.opacity);
+	reg.emplace_or_replace<ecs::CRenderBlend>(e, b);
+	return true;
+}
+
+bool serializeUiPanel(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CUiPanel>(e)) {
+		return false;
+	}
+	const auto& p = reg.get<ecs::CUiPanel>(e);
+	if (!p.role.empty()) {
+		j["role"] = p.role;
+	}
+	j["order"] = p.order;
+	j["visible"] = p.visible;
+	j["preferredWidth"] = p.preferredWidth;
+	j["preferredHeight"] = p.preferredHeight;
+	return true;
+}
+
+bool deserializeUiPanel(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CUiPanel p;
+	p.role = j.value("role", p.role);
+	p.order = j.value("order", p.order);
+	p.visible = j.value("visible", p.visible);
+	p.preferredWidth = j.value("preferredWidth", p.preferredWidth);
+	p.preferredHeight = j.value("preferredHeight", p.preferredHeight);
+	reg.emplace_or_replace<ecs::CUiPanel>(e, std::move(p));
+	return true;
+}
+
+bool serializeUiGroup(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CUiGroup>(e)) {
+		return false;
+	}
+	const auto& g = reg.get<ecs::CUiGroup>(e);
+	if (g.panel != 0) {
+		j["panel"] = entityIdString(static_cast<entt::entity>(g.panel));
+	}
+	if (g.parent != 0) {
+		j["parent"] = entityIdString(static_cast<entt::entity>(g.parent));
+	}
+	j["order"] = g.order;
+	j["orientation"] = g.orientation;
+	if (g.collapsed) {
+		j["collapsed"] = true;
+	}
+	return true;
+}
+
+bool deserializeUiGroup(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CUiGroup g;
+	if (j.contains("panel") && j["panel"].is_string()) {
+		g.panel = static_cast<uint32_t>(entityIdFromString(j["panel"].get<std::string>()));
+	}
+	if (j.contains("parent") && j["parent"].is_string()) {
+		g.parent = static_cast<uint32_t>(entityIdFromString(j["parent"].get<std::string>()));
+	}
+	g.order = j.value("order", g.order);
+	g.orientation = j.value("orientation", g.orientation);
+	g.collapsed = j.value("collapsed", g.collapsed);
+	reg.emplace_or_replace<ecs::CUiGroup>(e, std::move(g));
+	return true;
+}
+
+bool serializeUiControl(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CUiControl>(e)) {
+		return false;
+	}
+	const auto& c = reg.get<ecs::CUiControl>(e);
+	j["panel"] = entityIdString(static_cast<entt::entity>(c.panel));
+	if (c.group != 0) {
+		j["group"] = entityIdString(static_cast<entt::entity>(c.group));
+	}
+	j["order"] = c.order;
+	j["target"] = entityIdString(static_cast<entt::entity>(c.target));
+	j["propertyKey"] = c.propertyKey;
+	j["type"] = c.type;
+	j["enabled"] = c.enabled;
+	j["readOnly"] = c.readOnly;
+	if (c.widget != "auto") {
+		j["widget"] = c.widget;
+	}
+	return true;
+}
+
+bool deserializeUiControl(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CUiControl c;
+	if (j.contains("panel") && j["panel"].is_string()) {
+		c.panel = static_cast<uint32_t>(entityIdFromString(j["panel"].get<std::string>()));
+	}
+	if (j.contains("group") && j["group"].is_string()) {
+		c.group = static_cast<uint32_t>(entityIdFromString(j["group"].get<std::string>()));
+	}
+	if (j.contains("target") && j["target"].is_string()) {
+		c.target = static_cast<uint32_t>(entityIdFromString(j["target"].get<std::string>()));
+	}
+	c.order = j.value("order", c.order);
+	c.propertyKey = j.value("propertyKey", c.propertyKey);
+	c.type = j.value("type", c.type);
+	c.enabled = j.value("enabled", c.enabled);
+	c.readOnly = j.value("readOnly", c.readOnly);
+	c.widget = j.value("widget", c.widget);
+	reg.emplace_or_replace<ecs::CUiControl>(e, std::move(c));
+	return true;
+}
+
+void remapUiRefs(entt::registry& reg, const EntityIdMap& idMap) {
+	auto remap = [&](uint32_t& id) {
+		if (id == 0) {
+			return;
+		}
+		const auto it = idMap.find(id);
+		id = (it != idMap.end()) ? static_cast<uint32_t>(it->second) : 0;
+	};
+	for (auto e : reg.view<ecs::CUiGroup>()) {
+		auto& g = reg.get<ecs::CUiGroup>(e);
+		remap(g.panel);
+		remap(g.parent);
+	}
+	for (auto e : reg.view<ecs::CUiControl>()) {
+		auto& c = reg.get<ecs::CUiControl>(e);
+		remap(c.panel);
+		remap(c.group);
+		remap(c.target);
+	}
 }
 
 bool deserializeLayerVisible(entt::registry& reg, entt::entity e, const ordered_json& j) {
@@ -1799,6 +1989,16 @@ void registerInto(project::ComponentSerializerRegistry& registry) {
 							   deserializeLayer);
 	addSerializer<ecs::CLayer>(registry, "LayerVisible", "x.rigkit.layer_visible",
 							   serializeLayerVisible, deserializeLayerVisible);
+	addSerializer<ecs::CRenderVisibility>(registry, "RenderVisibility", "rig.render.visibility",
+										  serializeRenderVisibility, deserializeRenderVisibility);
+	addSerializer<ecs::CRenderBlend>(registry, "RenderBlend", "rig.render.blend",
+									 serializeRenderBlend, deserializeRenderBlend);
+	addSerializer<ecs::CUiPanel>(registry, "UiPanel", "rig.ui.panel", serializeUiPanel,
+								 deserializeUiPanel);
+	addSerializer<ecs::CUiGroup>(
+		registry, "UiGroup", "rig.ui.group", serializeUiGroup, deserializeUiGroup, remapUiRefs);
+	addSerializer<ecs::CUiControl>(registry, "UiControl", "rig.ui.control", serializeUiControl,
+								   deserializeUiControl);
 	addSerializer<ecs::CAssetRef>(registry, "AssetRef", "rig.media.asset_ref", serializeAssetRef,
 								  deserializeAssetRef);
 	addSerializer<ecs::CText>(
