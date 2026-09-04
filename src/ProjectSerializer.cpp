@@ -34,8 +34,10 @@ void syncEnvelopeFromProject(const ecs::CProject& doc, ordered_json& envelope) {
 	envelope["author"] = doc.author;
 	envelope["createdAt"] = doc.createdAt;
 	envelope["modifiedAt"] = doc.modifiedAt;
-	envelope["format_major"] = doc.formatMajor;
-	envelope["format_minor"] = doc.formatMinor;
+	// Stamp the format this writer emits, not the one the document was read
+	// with - a loaded 1.0 file is saved back as the current format.
+	envelope["format_major"] = kFormatMajor;
+	envelope["format_minor"] = kFormatMinor;
 	envelope["activePageIndex"] = doc.activePageIndex;
 	envelope["defaultUnit"] = doc.defaultUnit;
 	envelope["colorSpace"] = doc.colorSpace.empty() ? "srgb" : doc.colorSpace;

@@ -25,6 +25,15 @@ using ordered_json = nlohmann::ordered_json;
  */
 inline constexpr const char* kContractVersion = "0.26.0";
 
+/**
+ * @brief Host document format this writer emits (`format_major` / `format_minor`).
+ * @details Readers reject a larger major and read smaller minors via legacy-key
+ * fallbacks. 1.1 = unit-agnostic item keys (`size`, `baseline`, `pos`) per the
+ * RigWorks measurements rule; 1.0 wrote `sizeMm` / `baselineMm`.
+ */
+inline constexpr int kFormatMajor = 1;
+inline constexpr int kFormatMinor = 1;
+
 inline ordered_json loadOrderedJson(const std::string& path) {
 	ordered_json json;
 	std::ifstream in(path);

@@ -20,8 +20,10 @@ struct CProject {
 	std::string author;
 	std::string createdAt;
 	std::string modifiedAt;
+	// Format the document was read with (info); the writer stamps
+	// kFormatMajor / kFormatMinor from ProjectJson.h on save.
 	int formatMajor = 1;
-	int formatMinor = 0;
+	int formatMinor = 1;
 	int activePageIndex = 0;
 	std::string defaultUnit = "px"; // px | mm | in
 	std::string colorSpace = "srgb"; ///< Speaks document.colorSpace; rgba/rgb meaning
