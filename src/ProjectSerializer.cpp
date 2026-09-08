@@ -209,10 +209,11 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 		if (!entityObj.contains("id") || !entityObj.contains("components")) {
 			continue;
 		}
+		// Serializer-written ids look like "e42" and join the remap table so
+		// entity references survive. Hand-authored documents may use readable
+		// ids ("pixelplotter-scene") — those entities must still load; they
+		// just cannot be the target of a numeric reference remap.
 		const entt::entity savedEntity = entityIdFromString(entityObj["id"].get<std::string>());
-		if (savedEntity == entt::null) {
-			continue;
-		}
 		const auto& components = entityObj["components"];
 
 		std::string name;
@@ -220,7 +221,9 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 			name = components["rig.meta.named"].value("name", "");
 		}
 		const entt::entity entity = ecs.createEntity(name);
-		idMap[static_cast<std::uint32_t>(savedEntity)] = entity;
+		if (savedEntity != entt::null) {
+			idMap[static_cast<std::uint32_t>(savedEntity)] = entity;
+		}
 
 		auto& reg = ecs.registry();
 		for (const auto& ser : m_registry.serializers()) {
