@@ -602,6 +602,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	ecs.clear();
 	result.title = root.value("document", json::object())
 					   .value("title", sourceLabel.empty() ? "Rig document" : sourceLabel);
+	result.language = root.value("document", json::object()).value("language", "");
 
 	if (!root.contains("entities") || !root["entities"].is_array()) {
 		result.ok = true;

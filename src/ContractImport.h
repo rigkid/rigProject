@@ -30,6 +30,7 @@ namespace project {
 struct ContractImportResult {
 	bool ok = false;
 	std::string title;
+	std::string language; ///< document.language (BCP 47); empty when the file says nothing
 	std::string error;
 	int entityCount = 0;
 	int geometryCount = 0;

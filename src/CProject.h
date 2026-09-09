@@ -27,6 +27,7 @@ struct CProject {
 	int activePageIndex = 0;
 	std::string defaultUnit = "px"; // px | mm | in
 	std::string colorSpace = "srgb"; ///< Speaks document.colorSpace; rgba/rgb meaning
+	std::string language; ///< Speaks document.language (BCP 47, e.g. en-GB); empty = host default
 	std::string pdfX; ///< e.g. PDF/X-4; empty = not PDF/X
 	std::string outputCondition; ///< OutputConditionIdentifier (FOGRA39, ...)
 	std::string outputRegistry = "http://www.color.org";
@@ -45,12 +46,13 @@ struct CProject {
 				{7, "Active Page", EPT_INT, &activePageIndex},
 				{8, "Default Unit", EPT_STRING, &defaultUnit},
 				{9, "Color Space", EPT_STRING, &colorSpace},
-				{10, "PDF/X", EPT_STRING, &pdfX},
-				{11, "Output Condition", EPT_STRING, &outputCondition},
-				{12, "Output Registry", EPT_STRING, &outputRegistry},
-				{13, "Output Profile", EPT_STRING, &outputProfile},
-				{14, "Trapped", EPT_STRING, &trapped},
-				{15, "Dirty", EPT_BOOL, &dirty}};
+				{10, "Language", EPT_STRING, &language},
+				{11, "PDF/X", EPT_STRING, &pdfX},
+				{12, "Output Condition", EPT_STRING, &outputCondition},
+				{13, "Output Registry", EPT_STRING, &outputRegistry},
+				{14, "Output Profile", EPT_STRING, &outputProfile},
+				{15, "Trapped", EPT_STRING, &trapped},
+				{16, "Dirty", EPT_BOOL, &dirty}};
 	}
 };
 

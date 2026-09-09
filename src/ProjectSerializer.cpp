@@ -41,6 +41,9 @@ void syncEnvelopeFromProject(const ecs::CProject& doc, ordered_json& envelope) {
 	envelope["activePageIndex"] = doc.activePageIndex;
 	envelope["defaultUnit"] = doc.defaultUnit;
 	envelope["colorSpace"] = doc.colorSpace.empty() ? "srgb" : doc.colorSpace;
+	if (!doc.language.empty()) {
+		envelope["language"] = doc.language;
+	}
 	if (!doc.pdfX.empty()) {
 		envelope["pdfX"] = doc.pdfX;
 	}
@@ -71,6 +74,7 @@ void applyEnvelopeToProject(ecs::CProject& doc, const ordered_json& envelope) {
 	doc.activePageIndex = envelope.value("activePageIndex", doc.activePageIndex);
 	doc.defaultUnit = envelope.value("defaultUnit", doc.defaultUnit);
 	doc.colorSpace = envelope.value("colorSpace", doc.colorSpace);
+	doc.language = envelope.value("language", doc.language);
 	doc.pdfX = envelope.value("pdfX", doc.pdfX);
 	doc.outputCondition = envelope.value("outputCondition", doc.outputCondition);
 	doc.outputRegistry = envelope.value("outputRegistry", doc.outputRegistry);
