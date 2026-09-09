@@ -612,6 +612,19 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	std::unordered_map<std::string, entt::entity> idMap;
 	std::vector<std::pair<entt::entity, std::string>> pendingParents;
 
+	// A host with a rig.paint.solid codec keeps paint-only entities as data
+	// (table inks, swatches). The LED-ellipse presentation below is only for
+	// hosts that would otherwise show nothing.
+	bool hostSpeaksPaint = false;
+	if (codecs) {
+		for (const auto& ser : codecs->serializers()) {
+			if (ser.schemaId == "rig.paint.solid") {
+				hostSpeaksPaint = true;
+				break;
+			}
+		}
+	}
+
 	for (const auto& ent : root["entities"]) {
 		const std::string id = ent.value("id", "");
 		const json comps = ent.value("components", json::object());
@@ -854,7 +867,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 
 			auto style = styleFrom(comps);
 			applyMaterialAlbedo(style, comps);
-			if (comps.contains("rig.paint.solid") && !hasGeometry(comps)) {
+			if (comps.contains("rig.paint.solid") && !hasGeometry(comps) && !hostSpeaksPaint) {
 				const auto& solid = comps["rig.paint.solid"];
 				rigkit::ecs::CEllipse shape;
 				shape.rx = 80.f;
