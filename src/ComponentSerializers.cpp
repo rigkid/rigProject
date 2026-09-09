@@ -1695,6 +1695,15 @@ bool serializeUiControl(entt::registry& reg, entt::entity e, ordered_json& j) {
 	if (c.widget != "auto") {
 		j["widget"] = c.widget;
 	}
+	if (c.min != 0.f) {
+		j["min"] = c.min;
+	}
+	if (c.max != 1.f) {
+		j["max"] = c.max;
+	}
+	if (c.step != 0.01f) {
+		j["step"] = c.step;
+	}
 	return true;
 }
 
@@ -1715,6 +1724,9 @@ bool deserializeUiControl(entt::registry& reg, entt::entity e, const ordered_jso
 	c.enabled = j.value("enabled", c.enabled);
 	c.readOnly = j.value("readOnly", c.readOnly);
 	c.widget = j.value("widget", c.widget);
+	c.min = j.value("min", c.min);
+	c.max = j.value("max", c.max);
+	c.step = j.value("step", c.step);
 	reg.emplace_or_replace<ecs::CUiControl>(e, std::move(c));
 	return true;
 }
