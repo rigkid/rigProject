@@ -29,7 +29,6 @@ add_library(${PACK_NAME} STATIC
 	src/CProject.h
 	src/CPage.h
 	src/rig/pages.h
-	src/rig/pagesWindow.h
 	src/ContractImport.cpp
 	src/ContractImport.h
 	src/Rigz.cpp

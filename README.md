@@ -18,11 +18,12 @@ rig::placeOnPage(c);
 // update - design-space view + pointer (central dock * design/fb)
 rig::pollPageNav(nav);
 rig::setPageLayout(rig::PageLayout::Single); // or Stack
-// window (needs rigImGui):
+// window (needs rigDocumentShell + rigImGui):
+#include "PagesWindow.h"
 wm->createWindow<rig::PagesWindow>();
 ```
 
-Pages sit under each other on a board group, centered in the view. Drag pans; wheel zooms toward the cursor. **Scroll** shows the stack; **One page** hides the rest. PDF emit is **rigPdf**.
+Pages sit under each other on a board group, centered in the view. Drag pans; wheel zooms toward the cursor. **Scroll** shows the stack; **One page** hides the rest. The Pages panel lives on **rigDocumentShell**. PDF emit is **rigPdf**.
 
 ## Lingo: document vs project
 
