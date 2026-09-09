@@ -75,6 +75,9 @@ bool serializeTransform(entt::registry& reg, entt::entity e, ordered_json& j) {
 	j["position"] = vec3ToJson(t.position);
 	j["rotation"] = quatToJson(t.rotation);
 	j["scale"] = vec3ToJson(t.scale);
+	if (t.shear != glm::vec3(0.0f)) {
+		j["shear"] = vec3ToJson(t.shear); // Optional in the schema - absent = none.
+	}
 	// Omit editor euler and derived world matrix.
 	return true;
 }
@@ -86,6 +89,9 @@ bool deserializeTransform(entt::registry& reg, entt::entity e, const ordered_jso
 	}
 	if (j.contains("scale")) {
 		t.scale = vec3FromJson(j["scale"], t.scale);
+	}
+	if (j.contains("shear")) {
+		t.shear = vec3FromJson(j["shear"], t.shear);
 	}
 	if (j.contains("rotation")) {
 		t.setRotationQuat(quatFromJson(j["rotation"], t.rotation));
