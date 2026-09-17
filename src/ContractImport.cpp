@@ -1,7 +1,7 @@
 #include "ContractImport.h"
 
-#include "core/json.h"
 #include "core/TypeJson.h"
+#include "core/json.h"
 #include "ecs/MEcs.h"
 #include "ecs/PropertyReflection.h"
 #include "CArc.h"
@@ -47,11 +47,11 @@
 #include "ProjectJson.h"
 #include "rig/create.h"
 
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 #include <cmath>
 #include <fstream>
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <sstream>
@@ -287,6 +287,16 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.story.table",
 	"rig.pixel.palette",
 	"rig.media.text",
+	"rig.font.face",
+	"rig.font.layer",
+	"rig.font.glyph",
+	"rig.font.component",
+	"rig.font.anchor",
+	"rig.font.kern",
+	"rig.font.group",
+	"rig.font.axis",
+	"rig.font.avar",
+	"rig.font.cell",
 	"rig.media.asset_ref",
 	"rig.meta.named",
 	"rig.anim.curve",
@@ -610,7 +620,12 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	}
 
 	std::unordered_map<std::string, entt::entity> idMap;
-	std::vector<std::pair<entt::entity, std::string>> pendingParents;
+	struct PendingParent {
+		entt::entity entity{entt::null};
+		std::string parentId;
+		int order = 0;
+	};
+	std::vector<PendingParent> pendingParents;
 
 	// A host with a rig.paint.solid codec keeps paint-only entities as data
 	// (table inks, swatches). The LED-ellipse presentation below is only for
@@ -851,7 +866,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 				if (rel.contains("parent") && rel["parent"].is_string()) {
 					const auto parentId = rel["parent"].get<std::string>();
 					if (!parentId.empty()) {
-						pendingParents.emplace_back(entity, parentId);
+						pendingParents.push_back({entity, parentId, rel.value("order", 0)});
 					}
 				}
 			}
@@ -913,9 +928,10 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		ecs.addComponent(entity, transform);
 
 		if (comps.contains("rig.spatial.relationship")) {
-			const auto parentId = comps["rig.spatial.relationship"].value("parent", "");
+			const auto& rel = comps["rig.spatial.relationship"];
+			const auto parentId = rel.value("parent", "");
 			if (!parentId.empty()) {
-				pendingParents.emplace_back(entity, parentId);
+				pendingParents.push_back({entity, parentId, rel.value("order", 0)});
 			}
 		}
 
@@ -1204,14 +1220,15 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		}
 	}
 
-	for (const auto& [entity, parentId] : pendingParents) {
-		auto it = idMap.find(parentId);
+	for (const auto& pending : pendingParents) {
+		auto it = idMap.find(pending.parentId);
 		if (it == idMap.end()) {
 			continue;
 		}
 		rigkit::ecs::CRelationship rel;
 		rel.parent = it->second;
-		ecs.addComponent(entity, rel);
+		rel.order = pending.order;
+		ecs.addComponent(pending.entity, rel);
 	}
 
 	// Remap binding/tween entity ids to live entity names.

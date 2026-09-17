@@ -32,14 +32,13 @@
 #include "CMusicTransport.h"
 #include "CNurbsSurface.h"
 #include "CPalette.h"
-#include "CRenderBlend.h"
-#include "CRenderVisibility.h"
-#include "CUiPanel.h"
 #include "CPath.h"
 #include "CPolygon.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
 #include "CRelationship.h"
+#include "CRenderBlend.h"
+#include "CRenderVisibility.h"
 #include "CRing.h"
 #include "CSelectable.h"
 #include "CSpline.h"
@@ -48,6 +47,7 @@
 #include "CText.h"
 #include "CTransform.h"
 #include "CTween.h"
+#include "CUiPanel.h"
 #include "EntityIdRemap.h"
 #include "MeshEdge.h"
 #include "MeshFaces.h"
@@ -1209,6 +1209,9 @@ bool serializeRelationship(entt::registry& reg, entt::entity e, ordered_json& j)
 	} else {
 		j["parent"] = entityIdString(r.parent);
 	}
+	if (r.order != 0) {
+		j["order"] = r.order;
+	}
 	return true;
 }
 
@@ -1221,6 +1224,7 @@ bool deserializeRelationship(entt::registry& reg, entt::entity e, const ordered_
 	} else {
 		r.parent = entt::null;
 	}
+	r.order = j.value("order", 0);
 	reg.emplace_or_replace<ecs::CRelationship>(e, r);
 	return true;
 }
@@ -2013,8 +2017,8 @@ void registerInto(project::ComponentSerializerRegistry& registry) {
 									 serializeRenderBlend, deserializeRenderBlend);
 	addSerializer<ecs::CUiPanel>(registry, "UiPanel", "rig.ui.panel", serializeUiPanel,
 								 deserializeUiPanel);
-	addSerializer<ecs::CUiGroup>(
-		registry, "UiGroup", "rig.ui.group", serializeUiGroup, deserializeUiGroup, remapUiRefs);
+	addSerializer<ecs::CUiGroup>(registry, "UiGroup", "rig.ui.group", serializeUiGroup,
+								 deserializeUiGroup, remapUiRefs);
 	addSerializer<ecs::CUiControl>(registry, "UiControl", "rig.ui.control", serializeUiControl,
 								   deserializeUiControl);
 	addSerializer<ecs::CAssetRef>(registry, "AssetRef", "rig.media.asset_ref", serializeAssetRef,
