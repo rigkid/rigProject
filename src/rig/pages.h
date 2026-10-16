@@ -55,16 +55,20 @@ struct PageNavInput {
  * @brief Stacked `CPage` board - include this header and call; no extra system.
  * @details First `makePage` writes a `CProject` (or reuses one) and a board
  * group. Later pages sit under the last, centered on the board X. Shapes stay
- * page-local; call `placeOnPage` after `make*`. Board `CTransform` is the view
- * (pan + zoom). PDF emit is **rigPdf**.
+ * page-local; sketch primitives parent to `currentPage()`. Call `placeOnPage`
+ * after `make*`. Board `CTransform` is the view (pan + zoom). PDF emit is
+ * **rigPdf**.
  *
  * ```cpp
  * #include "rig/pages.h"
- * auto p = rig::makePage(520.f, 380.f);
- * auto c = rig::makeCircle(260.f, 190.f, 40.f);
- * rig::placeOnPage(c);
+ * #include "rig/sketch.h"
+ * rig::makePage(520.f, 380.f);
+ * rig::setFill(0.2f, 0.7f, 1.f);
+ * rig::circle(260.f, 190.f, 40.f);
+ * rig::setPage(0);
  * // update: rig::pollPageNav(nav); // or rig::fitPages();
  * // view: rig::setPageLayout(rig::PageLayout::Single);
+ * // view: rig::focusPage(0); // pans; also moves currentPage
  * ```
  */
 enum class PageLayout {
@@ -80,8 +84,15 @@ entt::entity makePage(rigkit::MEcs& ecs, float w, float h, const char* unit = nu
 /** @brief Board group pages parent to. Created on first `makePage`. */
 entt::entity pageBoard();
 
-/** @brief Page `makePage` last wrote, or `entt::null`. */
+/** @brief Page later `placeOnPage` / sketch shapes parent to, or `entt::null`. */
 entt::entity currentPage();
+
+/**
+ * @brief Point later `placeOnPage` / sketch shapes at page @p index.
+ * @details Leaves the board view and `activePageIndex` alone. Out-of-range
+ * index is a no-op. `focusPage` still pans onto a page and updates this too.
+ */
+void setPage(int index);
 
 /** @brief Parent @p child to `currentPage` when one exists. */
 void placeOnPage(entt::entity child);
@@ -122,6 +133,9 @@ void ensureProject(rigkit::MEcs& ecs);
 void adoptPages(rigkit::MEcs& ecs, const std::vector<entt::entity>& sortedPages);
 
 namespace pages_detail {
+
+/** First call installs sketch `placeOnPage`; later calls leave a custom hook. */
+void armSketchPlacement();
 
 constexpr float kPageGap = 48.f;
 constexpr float kWheelPan = 56.f;
@@ -481,6 +495,7 @@ inline entt::entity makePage(rigkit::MEcs& ecs, float w, float h, const char* un
 	pages_detail::setParent(ecs, e, s.board);
 	s.pages.push_back(e);
 	s.current = e;
+	pages_detail::armSketchPlacement();
 	s.stackY += h + pages_detail::kPageGap;
 	pages_detail::own(e);
 	pages_detail::setActive(index);
@@ -508,6 +523,15 @@ inline entt::entity pageBoard() {
 
 inline entt::entity currentPage() {
 	return pages_detail::rt().current;
+}
+
+inline void setPage(int index) {
+	auto& s = pages_detail::rt();
+	if (index < 0 || index >= static_cast<int>(s.pages.size())) {
+		return;
+	}
+	s.current = s.pages[static_cast<size_t>(index)];
+	pages_detail::armSketchPlacement();
 }
 
 inline void placeOnPage(entt::entity child) {
@@ -625,6 +649,7 @@ inline void focusPage(int index) {
 	const float vx = (s.viewW > 1.f) ? s.viewX : 0.f;
 	const float vy = (s.viewH > 1.f) ? s.viewY : 0.f;
 	s.current = s.pages[static_cast<size_t>(index)];
+	pages_detail::armSketchPlacement();
 	pages_detail::setActive(index);
 	pages_detail::applyLayout();
 	if (!pages_detail::pageExtent(s.current, x, y, w, h)) {
@@ -736,6 +761,7 @@ inline void adoptPages(rigkit::MEcs& ecs, const std::vector<entt::entity>& sorte
 	if (!s.pages.empty()) {
 		s.current = s.pages.front();
 	}
+	pages_detail::armSketchPlacement();
 }
 
 } // namespace rig

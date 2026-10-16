@@ -44,7 +44,8 @@ void releasePackage(PackageOpen& opened);
 /**
  * @brief Write a `.rigz` with exactly one `.rig` at the archive root.
  * @details Optional sidecars under @p packetRoot (`data/`, `assets/`) are stored
- * with those prefixes. @p rigPath is the JSON document to embed.
+ * with those prefixes. `data/` may contain further `.rig` files. @p rigPath is
+ * the JSON document embedded at the archive root.
  */
 bool writeRigz(const std::string& destPath, const std::string& rigPath,
 			   const std::string& packetRoot, std::string* error = nullptr);

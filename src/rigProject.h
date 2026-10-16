@@ -13,6 +13,9 @@ namespace rigkit {
  * @brief Document/page data + JSON document load/save systems.
  * @details Depends on rigComponent for registration order.
  * Default file extension is `.rig` (override with setFileExtension, e.g. "rigdoc").
+ * Reads and writes the JSON document. A `.rigz` is a ZIP with one `.rig` at the
+ * archive root plus `data/`, and `data/` may contain further `.rig` files.
+ * `openPackage` / `writeRigz` handle that ZIP.
  */
 class rigProject : public IPack {
   public:

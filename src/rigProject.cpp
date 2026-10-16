@@ -6,7 +6,8 @@
 #include "ecs/SystemRegistry.h"
 #include "CPage.h"
 #include "CProject.h"
-#include "ComponentSerializers.h"
+#include "rig/pages.h"
+#include "rig/sketch.h"
 
 #include <spdlog/spdlog.h>
 
@@ -73,9 +74,6 @@ void rigProject::setup() {
 	ecs->registerComponent<ecs::CProject>("Project", true);
 	ecs->registerComponent<ecs::CPage>("Page", true);
 	project::registerPageSerializers(m_serializer.registry());
-	// Codecs for rigComponent's PODs live with the registry, so a data-only app
-	// (rigComponent without this pack) links clean.
-	project::registerComponentSerializers(m_serializer.registry());
 
 	ecs->registerSystem("ProjectLoadSave", SystemPhase::Update, [this](MEcs& e) {
 		if (m_loadRequested) {
@@ -105,6 +103,8 @@ void rigProject::setup() {
 		}
 	});
 
+	rig::pages_detail::armSketchPlacement();
+
 	spdlog::info("[rigProject] registered Project/Page + load/save system (ext='{}')",
 				 m_fileExtension);
 }
@@ -132,6 +132,21 @@ void rigProject::setRootExtensionReader(project::ProjectSerializer::RootExtensio
 }
 
 } // namespace rigkit
+
+namespace rig {
+namespace pages_detail {
+
+void armSketchPlacement() {
+	static bool armed = false;
+	if (armed) {
+		return;
+	}
+	armed = true;
+	setSketchEntityHook([](entt::entity e) { placeOnPage(e); });
+}
+
+} // namespace pages_detail
+} // namespace rig
 
 namespace {
 struct rigProjectRegistrar {

@@ -7,14 +7,8 @@
 #include "CAnchor.h"
 #include "CArc.h"
 #include "CCadBoolean.h"
-#include "CCadBox.h"
-#include "CCadChamfer.h"
-#include "CCadCylinder.h"
-#include "CCadDimension.h"
 #include "CCadExtrude.h"
-#include "CCadFillet.h"
 #include "CCadRevolve.h"
-#include "CCadSphere.h"
 #include "CCamera.h"
 #include "CCode.h"
 #include "CDrawStyle.h"
@@ -24,8 +18,6 @@
 #include "CMesh.h"
 #include "CModBinding.h"
 #include "CModLfo.h"
-#include "CMusicClock.h"
-#include "CMusicTransport.h"
 #include "CNurbsSurface.h"
 #include "CPage.h"
 #include "CPalette.h"
@@ -320,18 +312,6 @@ bool hasGeometry(const json& comps) {
 	return false;
 }
 
-void readContractEdges(const json& j, std::vector<rigkit::ecs::MeshEdge>& edges) {
-	edges.clear();
-	if (!j.contains("edges") || !j["edges"].is_array()) {
-		return;
-	}
-	for (const auto& item : j["edges"]) {
-		if (item.is_object()) {
-			edges.push_back(rigkit::ecs::meshEdge(item.value("a", 0u), item.value("b", 0u)));
-		}
-	}
-}
-
 bool importCadAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& comps) {
 	bool wrote = false;
 	if (comps.contains("rig.geometry.spline3d")) {
@@ -390,126 +370,6 @@ bool importCadAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& comps
 			for (const auto& w : n["weights"]) {
 				s.weights.push_back(w.get<float>());
 			}
-		}
-		ecs.addComponent(entity, std::move(s));
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.box")) {
-		const auto& b = comps["rig.cad.box"];
-		rigkit::ecs::CCadBox s;
-		s.sizeX = b.value("sizeX", 1.f);
-		s.sizeY = b.value("sizeY", 1.f);
-		s.sizeZ = b.value("sizeZ", 1.f);
-		s.center = b.value("center", true);
-		ecs.addComponent(entity, s);
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.cylinder")) {
-		const auto& c = comps["rig.cad.cylinder"];
-		rigkit::ecs::CCadCylinder s;
-		s.radius = c.value("radius", 1.f);
-		s.height = c.value("height", 1.f);
-		s.circularSegments = c.value("circularSegments", 0);
-		s.center = c.value("center", true);
-		ecs.addComponent(entity, s);
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.sphere")) {
-		const auto& c = comps["rig.cad.sphere"];
-		rigkit::ecs::CCadSphere s;
-		s.radius = c.value("radius", 1.f);
-		s.circularSegments = c.value("circularSegments", 0);
-		ecs.addComponent(entity, s);
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.extrude")) {
-		const auto& x = comps["rig.cad.extrude"];
-		rigkit::ecs::CCadExtrude s;
-		if (x.contains("profile") && x["profile"].is_string()) {
-			s.profile = x["profile"].get<std::string>();
-		}
-		s.height = x.value("height", 1.f);
-		s.nDivisions = x.value("nDivisions", 0);
-		s.twistDegrees = x.value("twistDegrees", 0.f);
-		s.scaleTop = x.value("scaleTop", 1.f);
-		ecs.addComponent(entity, s);
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.revolve")) {
-		const auto& r = comps["rig.cad.revolve"];
-		rigkit::ecs::CCadRevolve s;
-		if (r.contains("profile") && r["profile"].is_string()) {
-			s.profile = r["profile"].get<std::string>();
-		}
-		s.revolveDegrees = r.value("revolveDegrees", 360.f);
-		s.circularSegments = r.value("circularSegments", 0);
-		ecs.addComponent(entity, s);
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.boolean")) {
-		const auto& b = comps["rig.cad.boolean"];
-		rigkit::ecs::CCadBoolean s;
-		const std::string op = b.value("op", std::string("difference"));
-		if (op == "union") {
-			s.op = rigkit::ecs::CCadBoolean::Op::Union;
-		} else if (op == "intersection") {
-			s.op = rigkit::ecs::CCadBoolean::Op::Intersection;
-		} else {
-			s.op = rigkit::ecs::CCadBoolean::Op::Difference;
-		}
-		if (b.contains("operands") && b["operands"].is_array()) {
-			for (const auto& id : b["operands"]) {
-				if (id.is_string()) {
-					s.operands.push_back(id.get<std::string>());
-				}
-			}
-		}
-		ecs.addComponent(entity, std::move(s));
-		wrote = true;
-	}
-	if (comps.contains("rig.cad.fillet")) {
-		const auto& f = comps["rig.cad.fillet"];
-		rigkit::ecs::CCadFillet s;
-		s.radius = f.value("radius", 1.f);
-		s.allEdges = f.value("allEdges", false);
-		if (!s.allEdges) {
-			readContractEdges(f, s.edges);
-		}
-		ecs.addComponent(entity, std::move(s));
-	}
-	if (comps.contains("rig.cad.chamfer")) {
-		const auto& c = comps["rig.cad.chamfer"];
-		rigkit::ecs::CCadChamfer s;
-		s.distance = c.value("distance", 1.f);
-		s.allEdges = c.value("allEdges", false);
-		if (!s.allEdges) {
-			readContractEdges(c, s.edges);
-		}
-		ecs.addComponent(entity, std::move(s));
-	}
-	if (comps.contains("rig.cad.dimension")) {
-		const auto& d = comps["rig.cad.dimension"];
-		rigkit::ecs::CCadDimension s;
-		const std::string kind = d.value("kind", std::string("linear"));
-		if (kind == "aligned") {
-			s.kind = rigkit::ecs::CCadDimension::Kind::Aligned;
-		} else if (kind == "horizontal") {
-			s.kind = rigkit::ecs::CCadDimension::Kind::Horizontal;
-		} else if (kind == "vertical") {
-			s.kind = rigkit::ecs::CCadDimension::Kind::Vertical;
-		} else if (kind == "diameter") {
-			s.kind = rigkit::ecs::CCadDimension::Kind::Diameter;
-		} else if (kind == "angle") {
-			s.kind = rigkit::ecs::CCadDimension::Kind::Angle;
-		} else {
-			s.kind = rigkit::ecs::CCadDimension::Kind::Linear;
-		}
-		s.a = d.value("a", std::string());
-		s.b = d.value("b", std::string());
-		s.value = d.value("value", 1.f);
-		s.measurement = d.value("measurement", false);
-		if (d.contains("offset")) {
-			s.offset = vec3FromJson(d["offset"], s.offset);
 		}
 		ecs.addComponent(entity, std::move(s));
 		wrote = true;
@@ -656,75 +516,6 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		++result.entityCount;
 
 		if (!codecs) {
-			if (comps.contains("rig.mod.lfo")) {
-				const auto& lfo = comps["rig.mod.lfo"];
-				rigkit::ecs::CModLfo mod;
-				mod.waveform = lfo.value("waveform", "sine");
-				mod.frequency = lfo.value("frequency", 0.f);
-				mod.amplitude = lfo.value("amplitude", 1.f);
-				mod.offset = lfo.value("offset", 0.f);
-				mod.phase = lfo.value("phase", 0.f);
-				ecs.addComponent(entity, mod);
-			}
-			if (comps.contains("rig.mod.binding")) {
-				const auto& b = comps["rig.mod.binding"];
-				rigkit::ecs::CModBinding bind;
-				bind.source = b.value("source", "");
-				bind.target = b.value("target", "");
-				bind.propertyKey = b.value("propertyKey", "");
-				bind.depth = b.value("depth", 1.f);
-				bind.additive = b.value("additive", false);
-				if (b.contains("min")) {
-					bind.hasMin = true;
-					bind.min = b["min"].get<float>();
-				}
-				if (b.contains("max")) {
-					bind.hasMax = true;
-					bind.max = b["max"].get<float>();
-				}
-				ecs.addComponent(entity, bind);
-			}
-			if (comps.contains("rig.anim.tween")) {
-				const auto& t = comps["rig.anim.tween"];
-				rigkit::ecs::CTween tw;
-				tw.target = t.value("target", "");
-				tw.propertyKey = t.value("propertyKey", "");
-				tw.from = t.value("from", 0.f);
-				tw.to = t.value("to", 1.f);
-				tw.duration = t.value("duration", 1.f);
-				tw.elapsed = t.value("elapsed", 0.f);
-				tw.easing = t.value("easing", "linear");
-				tw.loop = t.value("loop", false);
-				tw.playing = t.value("playing", true);
-				ecs.addComponent(entity, tw);
-			}
-			if (comps.contains("rig.music.clock")) {
-				const auto& c = comps["rig.music.clock"];
-				rigkit::ecs::CMusicClock clock;
-				clock.ticksPerQuarter = c.value("ticksPerQuarter", clock.ticksPerQuarter);
-				clock.phaseTicks = c.value("phaseTicks", clock.phaseTicks);
-				clock.swingAmount = c.value("swingAmount", clock.swingAmount);
-				clock.swingSubdiv = c.value("swingSubdiv", clock.swingSubdiv);
-				clock.externalSync = c.value("externalSync", clock.externalSync);
-				clock.syncBeat = c.value("syncBeat", clock.syncBeat);
-				clock.syncPhase = c.value("syncPhase", clock.syncPhase);
-				clock.syncPeriodBars = c.value("syncPeriodBars", clock.syncPeriodBars);
-				ecs.addComponent(entity, clock);
-			}
-			if (comps.contains("rig.music.transport")) {
-				const auto& t = comps["rig.music.transport"];
-				rigkit::ecs::CMusicTransport tr;
-				tr.playing = t.value("playing", tr.playing);
-				tr.bpm = t.value("bpm", tr.bpm);
-				tr.timeSigNum = t.value("timeSigNum", tr.timeSigNum);
-				tr.timeSigDen = t.value("timeSigDen", tr.timeSigDen);
-				tr.positionBeats = t.value("positionBeats", tr.positionBeats);
-				tr.loop = t.value("loop", tr.loop);
-				tr.loopStartBeats = t.value("loopStartBeats", tr.loopStartBeats);
-				tr.loopEndBeats = t.value("loopEndBeats", tr.loopEndBeats);
-				ecs.addComponent(entity, tr);
-			}
-
 			if (comps.contains("rig.layout.page")) {
 				const auto& p = comps["rig.layout.page"];
 				rigkit::ecs::CPage page;

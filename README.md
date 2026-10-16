@@ -10,10 +10,13 @@ Header-only: register **rigProject**, `#include "rig/pages.h"`, call `makePage`:
 
 ```cpp
 #include "rig/pages.h"
+#include "rig/sketch.h"
 
-auto page = rig::makePage(520.f, 380.f); // CPage + board + paper plate
-auto c = rig::makeCircle(260.f, 190.f, 40.f);
-rig::placeOnPage(c);
+rig::makePage(520.f, 380.f); // CPage + board + paper plate
+rig::setFill(0.2f, 0.7f, 1.f);
+rig::circle(260.f, 190.f, 40.f); // parents to currentPage
+rig::setPage(0);                 // placement only; view stays
+// view: rig::focusPage(0);
 
 // update - design-space view + pointer (central dock * design/fb)
 rig::pollPageNav(nav);
@@ -27,17 +30,23 @@ Pages sit under each other on a board group, centered in the view. Drag pans; wh
 
 ## Lingo: document vs project
 
-- **Document** = the portable `.rig` file - Contract JSON (`entities[].components` with `rig.*` schema ids). What RigViewer presents and RigPlayer plays.
+- **Document** = portable Contract JSON (`entities[].components` with `rig.*` schema ids). On disk that is a `.rig` file, or a `.rigz` ZIP when sidecar files travel with it. What RigViewer presents and RigPlayer plays.
 - **Project** = the host-side working envelope (`CProject` / `CPage`) inside a RigKit host session. This pack owns it.
 
-Contract JSON is the only `.rig` dialect: what this pack writes is what RigViewer reads. `tools/contract_smoke` ("save is readable by Contract import") holds that seam shut.
+Contract JSON is the only document dialect: what this pack writes is what RigViewer reads. `tools/contract_smoke` ("save is readable by Contract import") holds that seam shut.
+
+## Package (`.rigz`)
+
+A small document is one `.rig` file. When files travel with it, the Contract package is **`.rigz`**: a ZIP whose archive root holds exactly one `.rig`, beside a `data/` folder. `data/` holds the sidecars, and those files may themselves be `.rig` documents. `rig.media.asset_ref` paths are relative to `data/`. Unzipped, the same layout is the root `.rig` next to a sibling `data/`.
+
+`openPackage` / `writeRigz` read and write that ZIP. `requestSave` / `requestLoad` still read and write the JSON file. `setFileExtension` only changes the loose-file suffix. [Interchange](https://github.com/rigkid/RigWorks/blob/main/docs/interchange.md#package).
 
 ## Serialize (`.rig` document)
 
 - Root shape: `{ "rig": "<contract version>", "document": {...}, "entities": [...] }`
 - Entity shape: `{ "id": "e12", "components": { "rig.spatial.transform": {...} } }` - the name rides in `rig.meta.named`
 - Every codec carries a schema id: `rig.*` where the Contract defines the shape, `x.<vendor>.*` for host-only data. Registration refuses a codec without one, so nothing reaches a file unlabelled.
-- **This pack walks codecs; it does not own every codec.** Envelope + `CPage` / page-anchor codecs live here, and so do the codecs for rigComponent's PODs (`ComponentSerializers.cpp` - this pack already depends on rigComponent, and keeping them here lets a data-only app link rigComponent without pulling the registry). Domain packs and apps register their own via `registerSerializer`. Use `project::addSerializer<T>(...)` instead of copying the registry glue.
+- **This pack walks codecs and owns the page envelope.** Floor sketch codecs file from **rigSystems**. Domain codecs file from the code pack that fulfills the POD (**rigMilk**, **rigManifold**, **rigAudio**, ...). Data packs announce the type; they do not own the JSON. Use `project::addSerializer` from the code pack's `setup()`.
 - Skips: Selection (session), Canvas/Texture (non-portable), document metadata entity in `entities[]`
 - Optional root extension writer/reader for domain envelopes (e.g. plotter)
 

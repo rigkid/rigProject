@@ -22,10 +22,11 @@ namespace project {
 
 /**
  * @brief Contract JSON (rig\.* keys) to host POD import report + UI layout rows.
- * @details Clears the ECS and writes `rigComponent` PODs including `CModLfo` /
- * `CModBinding`. Property values live on entities (GetProperties); UI panel /
- * control / action rows here are layout only - never a second property store.
- * Modulators advance via `SModulators` (Update), not a free-function tick.
+ * @details Clears the ECS and writes floor **rigComponent** PODs. Domain codecs
+ * (`CModLfo` / `CCad*` / ...) apply when their data pack filed them. Property
+ * values live on entities (GetProperties); UI panel / control / action rows
+ * here are layout only - never a second property store. Modulators advance via
+ * `SModulators` (Update), not a free-function tick.
  */
 struct ContractImportResult {
 	bool ok = false;

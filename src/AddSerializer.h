@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <string>
+#include "ecs/MEcs.h"
 #include "ComponentSerializerRegistry.h"
 
 namespace rigkit {
@@ -37,6 +38,22 @@ void addSerializer(
 	ser.deserialize = std::move(deserializeFn);
 	ser.remapReferences = std::move(remapReferences);
 	registry.registerSerializer(std::move(ser));
+}
+
+/**
+ * @brief Announce a portable component and file its document codec.
+ * @details Owning data packs call this from setup() when rigProject is loaded.
+ * One schema id per call. A second schema on the same POD stays `addSerializer`.
+ */
+template <typename T>
+void registerComponent(
+	MEcs& ecs, ComponentSerializerRegistry& registry, const char* name, const char* schemaId,
+	std::function<bool(entt::registry&, entt::entity, ordered_json&)> serializeFn,
+	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserializeFn,
+	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {}) {
+	ecs.registerComponent<T>(name, true);
+	addSerializer<T>(registry, name, schemaId, std::move(serializeFn), std::move(deserializeFn),
+					 std::move(remapReferences));
 }
 
 /**
