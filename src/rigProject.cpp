@@ -1,12 +1,12 @@
 #include "rigProject.h"
 
-#include "core/pack/PackRegistry.h"
 #include "core/RigKitEngine.h"
+#include "core/pack/PackRegistry.h"
 #include "ecs/MEcs.h"
 #include "ecs/SystemRegistry.h"
-#include "ComponentSerializers.h"
 #include "CPage.h"
 #include "CProject.h"
+#include "ComponentSerializers.h"
 
 #include <spdlog/spdlog.h>
 

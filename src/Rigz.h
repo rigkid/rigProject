@@ -15,7 +15,7 @@ namespace project {
 /**
  * @brief Result of opening a `.rig` or `.rigz` package for import.
  * @details Packet root is the directory that contains the `.rig` and (when
- * present) a sibling `data/` folder. For `.rigz`, that is a temp extract  - 
+ * present) a sibling `data/` folder. For `.rigz`, that is a temp extract  -
  * call @ref releasePackage when done. Sidecar `asset_ref.path` values resolve
  * relative to `data/` - see RigWorks interchange.
  */

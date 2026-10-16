@@ -598,8 +598,8 @@ inline void fitPages() {
 	const float vh = (s.viewH > 1.f) ? s.viewH : sh;
 	const float vx = (s.viewW > 1.f) ? s.viewX : 0.f;
 	const float vy = (s.viewH > 1.f) ? s.viewY : 0.f;
-	s.zoom = std::clamp(std::min(vw / sw, vh / sh) * pages_detail::kFitPad,
-						pages_detail::kZoomMin, pages_detail::kZoomMax);
+	s.zoom = std::clamp(std::min(vw / sw, vh / sh) * pages_detail::kFitPad, pages_detail::kZoomMin,
+						pages_detail::kZoomMax);
 	s.panX = vx + vw * 0.5f - (minX + maxX) * 0.5f * s.zoom;
 	s.panY = vy + vh * 0.5f - (minY + maxY) * 0.5f * s.zoom;
 	s.fitted = true;
@@ -660,11 +660,10 @@ inline void pollPageNav(const PageNavInput& in) {
 		return;
 	}
 	const bool viewReady = s.viewW > 1.f && s.viewH > 1.f;
-	const bool overView =
-		viewReady && in.mouseX >= in.viewX && in.mouseX <= in.viewX + in.viewW &&
-		in.mouseY >= in.viewY && in.mouseY <= in.viewY + in.viewH;
-	const bool viewMoved =
-		viewReady && (std::fabs(s.viewW - s.fitViewW) > 8.f || std::fabs(s.viewH - s.fitViewH) > 8.f);
+	const bool overView = viewReady && in.mouseX >= in.viewX && in.mouseX <= in.viewX + in.viewW &&
+						  in.mouseY >= in.viewY && in.mouseY <= in.viewY + in.viewH;
+	const bool viewMoved = viewReady && (std::fabs(s.viewW - s.fitViewW) > 8.f ||
+										 std::fabs(s.viewH - s.fitViewH) > 8.f);
 	if (viewReady && !s.userNav && (!s.fitted || viewMoved) && !s.dragging) {
 		fitPages();
 	}
