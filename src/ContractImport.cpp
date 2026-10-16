@@ -4,6 +4,7 @@
 #include "core/json.h"
 #include "ecs/MEcs.h"
 #include "ecs/PropertyReflection.h"
+#include "CAnchor.h"
 #include "CArc.h"
 #include "CCadBoolean.h"
 #include "CCadBox.h"
@@ -531,19 +532,6 @@ void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
 	transform.rotation = glm::normalize(glm::quat_cast(glm::mat3(xAxis, yAxis, zAxis)));
 }
 
-/// Nine Contract cells onto `CPage::originAnchor` (same order as page codecs).
-int originAnchorFromId(const std::string& id) {
-	static const char* const kIds[] = {"top-left",	  "top-center",	   "top-right",
-									   "middle-left", "center",		   "middle-right",
-									   "bottom-left", "bottom-center", "bottom-right"};
-	for (int i = 0; i < 9; ++i) {
-		if (id == kIds[i]) {
-			return i;
-		}
-	}
-	return 0;
-}
-
 void readPageEdges(const json& j, const char* key, float& top, float& right, float& bottom,
 				   float& left, float& zFloor, float& zCeiling) {
 	if (!j.contains(key)) {
@@ -751,13 +739,22 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 							  page.bleedLeft, page.bleedFloor, page.bleedCeiling);
 				readPageEdges(p, "slug", page.slugTop, page.slugRight, page.slugBottom,
 							  page.slugLeft, page.slugFloor, page.slugCeiling);
-				if (comps.contains("rig.spatial.anchor")) {
-					const auto& anchor = comps["rig.spatial.anchor"];
-					if (anchor.contains("point") && anchor["point"].is_string()) {
-						page.originAnchor = originAnchorFromId(anchor["point"].get<std::string>());
-					}
-				}
 				ecs.addComponent(entity, page);
+			}
+
+			if (comps.contains("rig.spatial.anchor")) {
+				const auto& aj = comps["rig.spatial.anchor"];
+				rigkit::ecs::CAnchor a;
+				if (aj.contains("point") && aj["point"].is_string()) {
+					a.point = rigkit::ecs::CAnchor::pointFromId(aj["point"].get<std::string>());
+				}
+				if (aj.contains("height") && aj["height"].is_string()) {
+					a.height = rigkit::ecs::CAnchor::heightFromId(aj["height"].get<std::string>());
+				}
+				if (aj.contains("offset")) {
+					a.offset = vec2FromJson(aj["offset"], a.offset);
+				}
+				ecs.addComponent(entity, a);
 			}
 
 			if (comps.contains("rig.pixel.palette")) {

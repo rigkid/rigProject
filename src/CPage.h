@@ -15,11 +15,8 @@ namespace ecs {
  * outward. `name` is editor-only; the document names the entity with
  * `rig.meta.named`.
  *
- * `originAnchor` is the 3×3 face cell (`rig.spatial.anchor.point`) that is
- * page-local (0,0). It rides the page struct for host convenience but travels
- * as its own component - the page schema does not carry an anchor field.
- * Top-left is the Contract default, so that value writes no component at all.
- * Origin is an offset - axes do not invert.
+ * Local origin is sibling `CAnchor` (`rig.spatial.anchor`) - the page schema
+ * does not carry an anchor field. Absent anchor = top-left / min Z.
  */
 struct CPage {
 	std::string name = "Page";
@@ -45,12 +42,8 @@ struct CPage {
 	float slugLeft = 0.0f;
 	float slugFloor = 0.0f;
 	float slugCeiling = 0.0f;
-	int originAnchor = 0; ///< 0..8 = RigWorks 3×3 point order
 
 	std::vector<sProp> GetProperties() {
-		static const char* const kOrigin[] = {
-			"Top Left",	  "Top Center",	  "Top Right",	 "Middle Left",	  "Center",
-			"Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"};
 		return {{0, "Name", EPT_STRING, &name},
 				{1, "Index", EPT_INT, &index},
 				{2, "Unit", EPT_STRING, &unit},
@@ -61,8 +54,7 @@ struct CPage {
 				{7, "Margin Bottom", EPT_FLOAT, &marginBottom},
 				{8, "Margin Left", EPT_FLOAT, &marginLeft},
 				{9, "Margin Floor", EPT_FLOAT, &marginFloor},
-				{10, "Margin Ceiling", EPT_FLOAT, &marginCeiling},
-				{11, "Origin", EPT_INT, &originAnchor, kOrigin, 9}};
+				{10, "Margin Ceiling", EPT_FLOAT, &marginCeiling}};
 	}
 };
 

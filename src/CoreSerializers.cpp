@@ -1,36 +1,13 @@
+#include "core/TypeJson.h"
 #include "AddSerializer.h"
+#include "CAnchor.h"
 #include "CPage.h"
 #include "FaceInsets.h"
 #include "ProjectSerializer.h"
 
-#include <string>
-
 namespace rigkit {
 namespace project {
 namespace {
-
-/// `rig.spatial.anchor` ids for `CPage::originAnchor` - full 3×3 face.
-constexpr const char* kOriginAnchorIds[] = {"top-left",	   "top-center",	"top-right",
-											"middle-left", "center",		"middle-right",
-											"bottom-left", "bottom-center", "bottom-right"};
-constexpr int kOriginAnchorIdCount = 9;
-
-const char* originAnchorId(int v) {
-	if (v >= 0 && v < kOriginAnchorIdCount) {
-		return kOriginAnchorIds[v];
-	}
-	return kOriginAnchorIds[0];
-}
-
-/** @brief Read a `rig.spatial.anchor` cell id into the 9-cell page index. */
-int originAnchorFromId(const std::string& id) {
-	for (int i = 0; i < kOriginAnchorIdCount; ++i) {
-		if (id == kOriginAnchorIds[i]) {
-			return i;
-		}
-	}
-	return 0;
-}
 
 void writePageInsets(ordered_json& j, const char* key, float top, float right, float bottom,
 					 float left, float zFloor, float zCeiling) {
@@ -85,11 +62,6 @@ bool serializePage(entt::registry& reg, entt::entity e, ordered_json& j) {
 
 bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	ecs::CPage p;
-	// The anchor is a sibling component and may already have been read; the two
-	// codecs write the same struct, so neither may clear the other's field.
-	if (reg.all_of<ecs::CPage>(e)) {
-		p.originAnchor = reg.get<ecs::CPage>(e).originAnchor;
-	}
 	p.index = j.value("index", p.index);
 	p.unit = j.value("unit", p.unit);
 	p.width = j.value("width", p.width);
@@ -105,41 +77,49 @@ bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j)
 }
 
 /**
- * @brief Page anchor as `rig.spatial.anchor`, the component that owns it.
- * @details Written from the page struct rather than a second POD so the host
- * keeps one anchor field. Top-left is what an absent component means, so it
- * writes nothing - a page that never moved its origin stays clean on the wire.
+ * @brief `rig.spatial.anchor` from `CAnchor`.
+ * @details Top-left / min / zero offset is what an absent component means, so
+ * that value writes nothing. `height` and `offset` travel only when they leave
+ * those defaults.
  */
-bool serializePageAnchor(entt::registry& reg, entt::entity e, ordered_json& j) {
-	if (!reg.all_of<ecs::CPage>(e)) {
+bool serializeAnchor(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CAnchor>(e)) {
 		return false;
 	}
-	const auto& p = reg.get<ecs::CPage>(e);
-	if (p.originAnchor == 0) {
+	const auto& a = reg.get<ecs::CAnchor>(e);
+	if (a.isDefault()) {
 		return false;
 	}
-	j["point"] = originAnchorId(p.originAnchor);
+	j["point"] = ecs::CAnchor::pointToId(a.point);
+	if (a.height != ecs::CAnchor::kHeightMin) {
+		j["height"] = ecs::CAnchor::heightToId(a.height);
+	}
+	if (a.offset.x != 0.f || a.offset.y != 0.f) {
+		j["offset"] = vec2ToJson(a.offset);
+	}
 	return true;
 }
 
-bool deserializePageAnchor(entt::registry& reg, entt::entity e, const ordered_json& j) {
+bool deserializeAnchor(entt::registry& reg, entt::entity e, const ordered_json& j) {
 	if (!j.contains("point") || !j["point"].is_string()) {
 		return false;
 	}
-	ecs::CPage p;
-	if (reg.all_of<ecs::CPage>(e)) {
-		p = reg.get<ecs::CPage>(e);
+	ecs::CAnchor a;
+	a.point = ecs::CAnchor::pointFromId(j["point"].get<std::string>());
+	if (j.contains("height") && j["height"].is_string()) {
+		a.height = ecs::CAnchor::heightFromId(j["height"].get<std::string>());
 	}
-	p.originAnchor = originAnchorFromId(j["point"].get<std::string>());
-	reg.emplace_or_replace<ecs::CPage>(e, p);
+	if (j.contains("offset")) {
+		a.offset = vec2FromJson(j["offset"], a.offset);
+	}
+	reg.emplace_or_replace<ecs::CAnchor>(e, a);
 	return true;
 }
 
 void registerInto(ComponentSerializerRegistry& registry) {
 	addSerializer<ecs::CPage>(registry, "Page", "rig.layout.page", serializePage, deserializePage);
-	// Same struct, second Contract component: the anchor is not a page field.
-	addSerializer<ecs::CPage>(registry, "PageAnchor", "rig.spatial.anchor", serializePageAnchor,
-							  deserializePageAnchor);
+	addSerializer<ecs::CAnchor>(registry, "Anchor", "rig.spatial.anchor", serializeAnchor,
+								deserializeAnchor);
 }
 
 } // namespace

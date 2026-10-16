@@ -16,9 +16,7 @@ namespace project {
 /**
  * @brief Register a typed component codec on a document registry.
  * @details Packs that own portable PODs call this from setup() (via
- * `rigProject::registerSerializer` / the registry). One schema id per call  - 
- * the same C++ type may register twice when the Contract splits one POD across
- * two keys (e.g. page + anchor).
+ * `rigProject::registerSerializer` / the registry). One schema id per call.
  */
 template <typename T>
 void addSerializer(

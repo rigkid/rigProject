@@ -1901,6 +1901,13 @@ bool serializeCurve(entt::registry& reg, entt::entity e, ordered_json& j) {
 	}
 	j["points"] = std::move(points);
 	j["interpolation"] = curve::interpId(c.interp);
+	if (c.interp == ecs::CCurve::Interp::Bezier) {
+		auto handles = ordered_json::array();
+		for (const auto& h : c.handles) {
+			handles.push_back({{"in", vec2ToJson(h.in)}, {"out", vec2ToJson(h.out)}});
+		}
+		j["handles"] = std::move(handles);
+	}
 	if (c.preset != ecs::CCurve::Preset::Custom || c.points.size() >= 2) {
 		j["preset"] = curve::presetId(c.preset);
 	}
@@ -1922,6 +1929,19 @@ bool deserializeCurve(entt::registry& reg, entt::entity e, const ordered_json& j
 	}
 	if (j.contains("preset") && j["preset"].is_string()) {
 		c.preset = curve::presetFromId(j["preset"].get<std::string>());
+	}
+	if (j.contains("handles") && j["handles"].is_array()) {
+		c.handles.clear();
+		for (const auto& h : j["handles"]) {
+			ecs::CCurve::Handle hd;
+			if (h.contains("in")) {
+				hd.in = vec2FromJson(h["in"]);
+			}
+			if (h.contains("out")) {
+				hd.out = vec2FromJson(h["out"]);
+			}
+			c.handles.push_back(hd);
+		}
 	}
 	curve::ensureValid(c);
 	reg.emplace_or_replace<ecs::CCurve>(e, std::move(c));

@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "ecs/MEcs.h"
+#include "CAnchor.h"
 #include "CDrawStyle.h"
 #include "CGroup.h"
 #include "CLayer.h"
@@ -472,6 +473,7 @@ inline entt::entity makePage(rigkit::MEcs& ecs, float w, float h, const char* un
 	rigkit::ecs::CTransform xf;
 	xf.position = {-w * 0.5f, s.stackY, 0.f};
 	ecs.addComponent<rigkit::ecs::CPage>(e, page);
+	ecs.addComponent<rigkit::ecs::CAnchor>(e, rigkit::ecs::CAnchor{});
 	ecs.addComponent<rigkit::ecs::CTransform>(e, xf);
 	rigkit::ecs::CLayer layer;
 	layer.order = index;
