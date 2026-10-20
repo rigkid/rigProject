@@ -26,6 +26,7 @@
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
 #include "CRelationship.h"
+#include "CRenderMaterial.h"
 #include "CRing.h"
 #include "CSelectable.h"
 #include "CSpline.h"
@@ -237,7 +238,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.geometry.ring",
 	"rig.geometry.path",
 	"rig.geometry.mesh",
-	"rig.cad.box",
+	"rig.cad.cuboid",
 	"rig.cad.cylinder",
 	"rig.cad.sphere",
 	"rig.cad.extrude",
@@ -409,6 +410,54 @@ void readPageEdges(const json& j, const char* key, float& top, float& right, flo
 	zCeiling = in.ceiling;
 }
 
+void readRenderMaterial(const json& comps, rigkit::ecs::CRenderMaterial& out, std::string& albedoId) {
+	out = {};
+	albedoId.clear();
+	if (!comps.contains("rig.render.material") || !comps["rig.render.material"].is_object()) {
+		return;
+	}
+	const auto& m = comps["rig.render.material"];
+	if (m.contains("albedoRgb") && m["albedoRgb"].is_array() && m["albedoRgb"].size() >= 3) {
+		const glm::vec3 albedo = rgbFromJson(m["albedoRgb"]);
+		out.albedoR = albedo.r;
+		out.albedoG = albedo.g;
+		out.albedoB = albedo.b;
+	}
+	if (m.contains("metallic") && m["metallic"].is_number()) {
+		out.metallic = m["metallic"].get<float>();
+	}
+	if (m.contains("roughness") && m["roughness"].is_number()) {
+		out.roughness = m["roughness"].get<float>();
+	}
+	if (m.contains("emissive")) {
+		const glm::vec3 emissive = rgbFromJson(m["emissive"]);
+		out.emissiveR = emissive.r;
+		out.emissiveG = emissive.g;
+		out.emissiveB = emissive.b;
+	}
+	if (m.contains("albedoMap") && m["albedoMap"].is_string()) {
+		albedoId = m["albedoMap"].get<std::string>();
+	}
+}
+
+void attachRenderMaterial(rigkit::MEcs& ecs, entt::entity entity, const json& comps,
+						  std::vector<std::pair<entt::entity, std::string>>& pendingAlbedo) {
+	if (!comps.contains("rig.render.material")) {
+		return;
+	}
+	rigkit::ecs::CRenderMaterial material;
+	std::string albedoId;
+	readRenderMaterial(comps, material, albedoId);
+	if (ecs.hasComponent<rigkit::ecs::CRenderMaterial>(entity)) {
+		ecs.getComponent<rigkit::ecs::CRenderMaterial>(entity) = material;
+	} else {
+		ecs.addComponent(entity, material);
+	}
+	if (!albedoId.empty()) {
+		pendingAlbedo.emplace_back(entity, albedoId);
+	}
+}
+
 void applyMaterialAlbedo(rigkit::ecs::CDrawStyle& style, const json& comps) {
 	if (!comps.contains("rig.render.material")) {
 		return;
@@ -474,6 +523,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		int order = 0;
 	};
 	std::vector<PendingParent> pendingParents;
+	std::vector<std::pair<entt::entity, std::string>> pendingAlbedo;
 
 	// A host with a rig.paint.solid codec keeps paint-only entities as data
 	// (table inks, swatches). The LED-ellipse presentation below is only for
@@ -670,6 +720,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 
 			auto style = styleFrom(comps);
 			applyMaterialAlbedo(style, comps);
+			attachRenderMaterial(ecs, entity, comps, pendingAlbedo);
 			if (comps.contains("rig.paint.solid") && !hasGeometry(comps) && !hostSpeaksPaint) {
 				const auto& solid = comps["rig.paint.solid"];
 				rigkit::ecs::CEllipse shape;
@@ -757,6 +808,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 
 		auto style = styleFrom(comps);
 		applyMaterialAlbedo(style, comps);
+		attachRenderMaterial(ecs, entity, comps, pendingAlbedo);
 		bool wroteGeometry = false;
 
 		if (comps.contains("rig.render.light")) {
@@ -820,10 +872,10 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		} else if (comps.contains("rig.geometry.ellipse")) {
 			const auto& el = comps["rig.geometry.ellipse"];
 			rigkit::ecs::CEllipse shape;
-			shape.cx = el.value("cx", 0.f);
-			shape.cy = el.value("cy", 0.f);
-			shape.rx = el.value("rx", 0.f);
-			shape.ry = el.value("ry", 0.f);
+			shape.cx = el.value("centerX", 0.f);
+			shape.cy = el.value("centerY", 0.f);
+			shape.rx = el.value("radiusX", 0.f);
+			shape.ry = el.value("radiusY", 0.f);
 			ecs.addComponent(entity, shape);
 			wroteGeometry = true;
 		} else if (comps.contains("rig.geometry.line")) {
@@ -838,8 +890,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		} else if (comps.contains("rig.geometry.regular_polygon")) {
 			const auto& ngon = comps["rig.geometry.regular_polygon"];
 			rigkit::ecs::CRegularPolygon shape;
-			shape.cx = ngon.value("cx", 0.f);
-			shape.cy = ngon.value("cy", 0.f);
+			shape.cx = ngon.value("centerX", 0.f);
+			shape.cy = ngon.value("centerY", 0.f);
 			shape.radius = ngon.value("radius", 1.f);
 			shape.sides = ngon.value("sides", 3);
 			shape.rotationDegrees = ngon.value("rotationDegrees", 0.f);
@@ -848,8 +900,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		} else if (comps.contains("rig.geometry.star")) {
 			const auto& star = comps["rig.geometry.star"];
 			rigkit::ecs::CStar shape;
-			shape.cx = star.value("cx", 0.f);
-			shape.cy = star.value("cy", 0.f);
+			shape.cx = star.value("centerX", 0.f);
+			shape.cy = star.value("centerY", 0.f);
 			shape.radius = star.value("radius", 1.f);
 			shape.innerRadius = star.value("innerRadius", shape.radius * 0.5f);
 			shape.points = star.value("points", 5);
@@ -872,11 +924,11 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		} else if (comps.contains("rig.geometry.arc")) {
 			const auto& arc = comps["rig.geometry.arc"];
 			rigkit::ecs::CArc shape;
-			shape.cx = arc.value("cx", 0.f);
-			shape.cy = arc.value("cy", 0.f);
-			if (arc.contains("rx") || arc.contains("ry")) {
-				shape.rx = arc.value("rx", arc.value("radius", 1.f));
-				shape.ry = arc.value("ry", arc.value("radius", 1.f));
+			shape.cx = arc.value("centerX", 0.f);
+			shape.cy = arc.value("centerY", 0.f);
+			if (arc.contains("radiusX") || arc.contains("radiusY")) {
+				shape.rx = arc.value("radiusX", arc.value("radius", 1.f));
+				shape.ry = arc.value("radiusY", arc.value("radius", 1.f));
 			} else {
 				shape.setRadius(arc.value("radius", 1.f));
 			}
@@ -919,8 +971,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		} else if (comps.contains("rig.geometry.ring")) {
 			const auto& ring = comps["rig.geometry.ring"];
 			rigkit::ecs::CRing shape;
-			shape.cx = ring.value("cx", 0.f);
-			shape.cy = ring.value("cy", 0.f);
+			shape.cx = ring.value("centerX", 0.f);
+			shape.cy = ring.value("centerY", 0.f);
 			shape.outerRadius = ring.value("outerRadius", 1.f);
 			shape.innerRadius = ring.value("innerRadius", 0.5f);
 			ecs.addComponent(entity, shape);
@@ -1006,6 +1058,14 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			ecs.addComponent(entity, style);
 			++result.geometryCount;
 		}
+	}
+
+	for (const auto& pending : pendingAlbedo) {
+		auto it = idMap.find(pending.second);
+		if (it == idMap.end() || !ecs.hasComponent<rigkit::ecs::CRenderMaterial>(pending.first)) {
+			continue;
+		}
+		ecs.getComponent<rigkit::ecs::CRenderMaterial>(pending.first).albedoMap = it->second;
 	}
 
 	for (const auto& pending : pendingParents) {
