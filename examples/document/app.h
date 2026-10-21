@@ -8,11 +8,6 @@
 
 class DocumentApp : public rigkit::IApp {
   public:
-	DocumentApp() {
-		window().width = 1100;
-		window().height = 700;
-		window().title = "rigProject - document";
-	}
 	void setup() override;
 	void update(float) override;
 	void draw() override {}

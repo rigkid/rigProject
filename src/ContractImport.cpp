@@ -26,6 +26,7 @@
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
 #include "CRelationship.h"
+#include "CRenderEnvironment.h"
 #include "CRenderMaterial.h"
 #include "CRing.h"
 #include "CSelectable.h"
@@ -258,6 +259,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.ui.control",
 	"rig.ui.action",
 	"rig.render.material",
+	"rig.render.environment",
 	"rig.render.light",
 	"rig.media.code",
 	"rig.layout.page",
@@ -440,6 +442,30 @@ void readRenderMaterial(const json& comps, rigkit::ecs::CRenderMaterial& out, st
 	}
 }
 
+void attachRenderEnvironment(rigkit::MEcs& ecs, entt::entity entity, const json& comps,
+							  std::vector<std::pair<entt::entity, std::string>>& pendingHdri) {
+	if (!comps.contains("rig.render.environment") || !comps["rig.render.environment"].is_object()) {
+		return;
+	}
+	const auto& envJson = comps["rig.render.environment"];
+	rigkit::ecs::CRenderEnvironment env;
+	if (ecs.hasComponent<rigkit::ecs::CRenderEnvironment>(entity)) {
+		env = ecs.getComponent<rigkit::ecs::CRenderEnvironment>(entity);
+	}
+	env.intensity = envJson.value("intensity", 1.f);
+	if (ecs.hasComponent<rigkit::ecs::CRenderEnvironment>(entity)) {
+		ecs.getComponent<rigkit::ecs::CRenderEnvironment>(entity) = env;
+	} else {
+		ecs.addComponent(entity, env);
+	}
+	if (envJson.contains("hdri") && envJson["hdri"].is_string()) {
+		const auto id = envJson["hdri"].get<std::string>();
+		if (!id.empty()) {
+			pendingHdri.emplace_back(entity, id);
+		}
+	}
+}
+
 void attachRenderMaterial(rigkit::MEcs& ecs, entt::entity entity, const json& comps,
 						  std::vector<std::pair<entt::entity, std::string>>& pendingAlbedo) {
 	if (!comps.contains("rig.render.material")) {
@@ -524,6 +550,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	};
 	std::vector<PendingParent> pendingParents;
 	std::vector<std::pair<entt::entity, std::string>> pendingAlbedo;
+	std::vector<std::pair<entt::entity, std::string>> pendingHdri;
 
 	// A host with a rig.paint.solid codec keeps paint-only entities as data
 	// (table inks, swatches). The LED-ellipse presentation below is only for
@@ -721,6 +748,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			auto style = styleFrom(comps);
 			applyMaterialAlbedo(style, comps);
 			attachRenderMaterial(ecs, entity, comps, pendingAlbedo);
+			attachRenderEnvironment(ecs, entity, comps, pendingHdri);
 			if (comps.contains("rig.paint.solid") && !hasGeometry(comps) && !hostSpeaksPaint) {
 				const auto& solid = comps["rig.paint.solid"];
 				rigkit::ecs::CEllipse shape;
@@ -809,6 +837,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		auto style = styleFrom(comps);
 		applyMaterialAlbedo(style, comps);
 		attachRenderMaterial(ecs, entity, comps, pendingAlbedo);
+		attachRenderEnvironment(ecs, entity, comps, pendingHdri);
 		bool wroteGeometry = false;
 
 		if (comps.contains("rig.render.light")) {
@@ -1066,6 +1095,15 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			continue;
 		}
 		ecs.getComponent<rigkit::ecs::CRenderMaterial>(pending.first).albedoMap = it->second;
+	}
+
+	for (const auto& pending : pendingHdri) {
+		if (!ecs.hasComponent<rigkit::ecs::CRenderEnvironment>(pending.first)) {
+			continue;
+		}
+		auto& env = ecs.getComponent<rigkit::ecs::CRenderEnvironment>(pending.first);
+		auto it = idMap.find(pending.second);
+		env.hdri = (it == idMap.end()) ? entt::null : it->second;
 	}
 
 	for (const auto& pending : pendingParents) {
