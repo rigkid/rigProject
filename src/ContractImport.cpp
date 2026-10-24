@@ -23,6 +23,7 @@
 #include "CPalette.h"
 #include "CPath.h"
 #include "CPolygon.h"
+#include "CText.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
 #include "CRelationship.h"
@@ -283,6 +284,18 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.story.table",
 	"rig.pixel.palette",
 	"rig.media.text",
+	"rig.media.text_path",
+	"rig.media.font_face",
+	"rig.spatial.instance",
+	"rig.paint.stroke_style",
+	"rig.paint.order",
+	"rig.paint.clip",
+	"rig.paint.mask",
+	"rig.paint.markers",
+	"rig.paint.marker",
+	"rig.paint.pattern",
+	"rig.paint.filter",
+	"rig.paint.filter_step",
 	"rig.font.face",
 	"rig.font.layer",
 	"rig.font.glyph",
@@ -824,6 +837,21 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			ecs.addComponent(entity, camera);
 		}
 
+		if (comps.contains("rig.media.text") && !ecs.hasComponent<rigkit::ecs::CText>(entity)) {
+			const auto& t = comps["rig.media.text"];
+			rigkit::ecs::CText text;
+			text.text = t.value("text", "");
+			text.fontSize = t.value("fontSize", text.fontSize);
+			text.tracking = t.value("tracking", text.tracking);
+			text.useKerning = t.value("useKerning", text.useKerning);
+			text.features = t.value("features", text.features);
+			const std::string a = t.value("anchor", std::string("start"));
+			text.anchor = a == "middle" ? rigkit::ecs::CText::Anchor::Middle
+						  : a == "end"	? rigkit::ecs::CText::Anchor::End
+										: rigkit::ecs::CText::Anchor::Start;
+			ecs.addComponent(entity, std::move(text));
+		}
+
 		if (comps.contains("rig.media.code")) {
 			const auto& code = comps["rig.media.code"];
 			rigkit::ecs::CCode buffer;
@@ -1006,73 +1034,45 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			shape.innerRadius = ring.value("innerRadius", 0.5f);
 			ecs.addComponent(entity, shape);
 			wroteGeometry = true;
-		} else if (comps.contains("rig.geometry.path")) {
+		} else if (comps.contains("rig.geometry.path") &&
+				   !ecs.hasComponent<rigkit::ecs::CPath>(entity)) {
 			const auto& path = comps["rig.geometry.path"];
-			std::vector<glm::vec2> pts;
-			float cx = 0.f;
-			float cy = 0.f;
-			bool closed = false;
+			rigkit::ecs::CPath out;
 			if (path.contains("commands") && path["commands"].is_array()) {
 				for (const auto& cmd : path["commands"]) {
 					const std::string type = cmd.value("type", "");
-					if (type == "move-to" && cmd.contains("point")) {
-						const glm::vec2 p = vec2FromJson(cmd["point"], {cx, cy});
-						cx = p.x;
-						cy = p.y;
-						pts.push_back(p);
-					} else if (type == "line-to" && cmd.contains("point")) {
-						const glm::vec2 p = vec2FromJson(cmd["point"], {cx, cy});
-						cx = p.x;
-						cy = p.y;
-						pts.push_back(p);
+					rigkit::ecs::CPath::Command row;
+					if (type == "line-to") {
+						row.type = rigkit::ecs::CPath::Cmd::LineTo;
+						row.p = vec2FromJson(cmd.value("point", json::array()), {0.f, 0.f});
 					} else if (type == "cubic-to") {
-						const glm::vec2 c1 = cmd.contains("control1")
-												 ? vec2FromJson(cmd["control1"], {cx, cy})
-												 : glm::vec2{cx, cy};
-						const glm::vec2 c2 = cmd.contains("control2")
-												 ? vec2FromJson(cmd["control2"], {cx, cy})
-												 : glm::vec2{cx, cy};
-						const glm::vec2 p = cmd.contains("point")
-												? vec2FromJson(cmd["point"], {cx, cy})
-												: glm::vec2{cx, cy};
-						const float x0 = cx;
-						const float y0 = cy;
-						for (int i = 1; i <= 12; ++i) {
-							const float t = static_cast<float>(i) / 12.f;
-							const float u = 1.f - t;
-							const float x = u * u * u * x0 + 3 * u * u * t * c1.x +
-											3 * u * t * t * c2.x + t * t * t * p.x;
-							const float y = u * u * u * y0 + 3 * u * u * t * c1.y +
-											3 * u * t * t * c2.y + t * t * t * p.y;
-							pts.emplace_back(x, y);
-						}
-						cx = p.x;
-						cy = p.y;
+						row.type = rigkit::ecs::CPath::Cmd::CubicTo;
+						row.p = vec2FromJson(cmd.value("point", json::array()), {0.f, 0.f});
+						row.c1 = vec2FromJson(cmd.value("control1", json::array()), {0.f, 0.f});
+						row.c2 = vec2FromJson(cmd.value("control2", json::array()), {0.f, 0.f});
 					} else if (type == "quad-to") {
-						const glm::vec2 c1 = cmd.contains("control1")
-												 ? vec2FromJson(cmd["control1"], {cx, cy})
-												 : glm::vec2{cx, cy};
-						const glm::vec2 p = cmd.contains("point")
-												? vec2FromJson(cmd["point"], {cx, cy})
-												: glm::vec2{cx, cy};
-						const float x0 = cx;
-						const float y0 = cy;
-						for (int i = 1; i <= 10; ++i) {
-							const float t = static_cast<float>(i) / 10.f;
-							const float u = 1.f - t;
-							const float x = u * u * x0 + 2 * u * t * c1.x + t * t * p.x;
-							const float y = u * u * y0 + 2 * u * t * c1.y + t * t * p.y;
-							pts.emplace_back(x, y);
-						}
-						cx = p.x;
-						cy = p.y;
+						row.type = rigkit::ecs::CPath::Cmd::QuadTo;
+						row.p = vec2FromJson(cmd.value("point", json::array()), {0.f, 0.f});
+						row.c1 = vec2FromJson(cmd.value("control1", json::array()), {0.f, 0.f});
 					} else if (type == "close") {
-						closed = true;
+						row.type = rigkit::ecs::CPath::Cmd::Close;
+					} else if (type == "arc-to") {
+						row.type = rigkit::ecs::CPath::Cmd::ArcTo;
+						row.p = vec2FromJson(cmd.value("point", json::array()), {0.f, 0.f});
+						row.radii.x = cmd.value("radiusX", 0.f);
+						row.radii.y = cmd.value("radiusY", 0.f);
+						row.xRotDeg = cmd.value("xAxisRotationDegrees", 0.f);
+						row.largeArc = cmd.value("largeArc", false);
+						row.sweep = cmd.value("sweep", false);
+					} else {
+						row.type = rigkit::ecs::CPath::Cmd::MoveTo;
+						row.p = vec2FromJson(cmd.value("point", json::array()), {0.f, 0.f});
 					}
+					out.commands.push_back(row);
 				}
 			}
-			ecs.addComponent(entity, meshFromPoints2(pts, closed));
-			result.notes.push_back(id + ": path tessellated to mesh");
+			out.evenOdd = path.value("fillRule", std::string("nonzero")) == "evenodd";
+			ecs.addComponent(entity, std::move(out));
 			wroteGeometry = true;
 		} else if (comps.contains("rig.geometry.mesh")) {
 			ecs.addComponent(entity, meshFromContract(comps["rig.geometry.mesh"]));
