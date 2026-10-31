@@ -36,6 +36,7 @@
 #include "CStar.h"
 #include "CTransform.h"
 #include "CTween.h"
+#include "CUiPanel.h"
 #include "EntityProperty.h"
 #include "FaceInsets.h"
 #include "MeshFaces.h"
@@ -659,6 +660,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			panel.id = id;
 			panel.name = name;
 			panel.role = p.value("role", "");
+			panel.surface = p.value("surface", "tool");
 			panel.order = p.value("order", 0);
 			panel.visible = p.value("visible", true);
 			panel.preferredWidth = p.value("preferredWidth", 320.f);
@@ -1205,6 +1207,79 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			rig::lookAt(xf, xf.position, target);
 			result.notes.push_back("camera aimed at scene (identity rotation to lookAt)");
 		}
+	}
+
+	auto uiRef = [&](const std::string& id) -> uint32_t {
+		if (id.empty()) {
+			return 0;
+		}
+		const auto it = idMap.find(id);
+		return it == idMap.end() ? 0 : entt::to_integral(it->second);
+	};
+	auto uiEntity = [&](const std::string& id) -> entt::entity {
+		const auto it = idMap.find(id);
+		return it == idMap.end() ? entt::null : it->second;
+	};
+	for (const auto& p : result.panels) {
+		const entt::entity e = uiEntity(p.id);
+		if (e == entt::null) {
+			continue;
+		}
+		rigkit::ecs::CUiPanel panel;
+		panel.role = p.role;
+		panel.surface = rigkit::ecs::uiSurfaceFromToken(p.surface);
+		panel.order = p.order;
+		panel.visible = p.visible;
+		panel.preferredWidth = p.preferredWidth;
+		panel.preferredHeight = p.preferredHeight;
+		ecs.registry().emplace_or_replace<rigkit::ecs::CUiPanel>(e, std::move(panel));
+	}
+	for (const auto& g : result.groups) {
+		const entt::entity e = uiEntity(g.id);
+		if (e == entt::null) {
+			continue;
+		}
+		rigkit::ecs::CUiGroup group;
+		group.panel = uiRef(g.panel);
+		group.parent = uiRef(g.parent);
+		group.order = g.order;
+		group.orientation = rigkit::ecs::uiOrientFromToken(g.orientation);
+		group.collapsed = g.collapsed;
+		ecs.registry().emplace_or_replace<rigkit::ecs::CUiGroup>(e, std::move(group));
+	}
+	for (const auto& c : result.controls) {
+		const entt::entity e = uiEntity(c.id);
+		if (e == entt::null) {
+			continue;
+		}
+		rigkit::ecs::CUiControl ctrl;
+		ctrl.panel = uiRef(c.panel);
+		ctrl.group = uiRef(c.group);
+		ctrl.order = c.order;
+		ctrl.target = uiRef(c.target);
+		ctrl.propertyKey = c.propertyKey;
+		ctrl.type = c.type;
+		ctrl.min = c.min.value_or(ctrl.min);
+		ctrl.max = c.max.value_or(ctrl.max);
+		ctrl.step = c.step.value_or(ctrl.step);
+		ctrl.enabled = c.enabled;
+		ctrl.readOnly = c.readOnly;
+		ctrl.options = c.options;
+		ctrl.widget = rigkit::ecs::uiWidgetFromToken(c.widget);
+		ecs.registry().emplace_or_replace<rigkit::ecs::CUiControl>(e, std::move(ctrl));
+	}
+	for (const auto& a : result.actions) {
+		const entt::entity e = uiEntity(a.id);
+		if (e == entt::null) {
+			continue;
+		}
+		rigkit::ecs::CUiAction action;
+		action.panel = uiRef(a.panel);
+		action.group = uiRef(a.group);
+		action.order = a.order;
+		action.actionId = a.actionId;
+		action.enabled = a.enabled;
+		ecs.registry().emplace_or_replace<rigkit::ecs::CUiAction>(e, std::move(action));
 	}
 
 	// Dedupe skipped keys

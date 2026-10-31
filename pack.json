@@ -2,7 +2,7 @@
   "name": "rigProject",
   "url": "https://github.com/rigkid/rigProject.git",
   "ref": "main",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Rigkid",
   "license": "MIT Rigkid Contributors",
   "description": "Host project envelope (CProject/CPage) + .rig document IO. Document = portable .rig (Contract JSON); project = host session.",

@@ -46,7 +46,7 @@ A small document is one `.rig` file. When files travel with it, the Contract pac
 - Root shape: `{ "rig": "<contract version>", "document": {...}, "entities": [...] }`
 - Entity shape: `{ "id": "e12", "components": { "rig.spatial.transform": {...} } }` - the name rides in `rig.meta.named`
 - Every codec carries a schema id: `rig.*` where the Contract defines the shape, `x.<vendor>.*` for host-only data. Registration refuses a codec without one, so nothing reaches a file unlabelled.
-- **This pack walks codecs and owns the page envelope.** Floor sketch codecs file from **rigSystems**. Domain codecs file from the code pack that fulfills the POD (**rigMilk**, **rigManifold**, **rigAudio**, ...). Data packs announce the type; they do not own the JSON. Use `project::addSerializer` from the code pack's `setup()`.
+- **This pack walks codecs and owns the page envelope.** Floor sketch codecs file from **rigSystems**. Domain codecs file from the code pack that fulfills the POD (**rigManifold**, **rigAudio**, ...). Data packs announce the type; they do not own the JSON. Use `project::addSerializer` from the code pack's `setup()`.
 - Skips: Selection (session), Canvas/Texture (non-portable), document metadata entity in `entities[]`
 - Optional root extension writer/reader for domain envelopes (e.g. plotter)
 
@@ -75,7 +75,7 @@ auto result = rigkit::project::importContractJson(*ecs, jsonText, path, doc->ser
 if (!result.ok) { /* result.error */ }
 ```
 
-Pass the document pack's registry when available. Relationship still remaps by Contract document id (not `eN` handles). UI panel / control / action rows stay on `ContractImportResult` as layout only. `rig.media.code`, paint.solid present fallback, and material to fill stay special-cased.
+Pass the document pack's registry when available. Relationship still remaps by Contract document id (not `eN` handles). `CUiPanel` / `CUiGroup` / `CUiControl` / `CUiAction` write onto those entities; report rows list what arrived. `rig.media.code`, paint.solid present fallback, and material to fill stay special-cased.
 
 ## Build Example
 

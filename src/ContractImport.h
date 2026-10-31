@@ -3,8 +3,8 @@
 /**
  * @file
  * @brief Read a Contract document into the ECS and report what arrived.
- * @details Panel, control, and action rows carry layout only - the values they point at live
- * on the entities.
+ * @details Writes `CUiPanel` / `CUiGroup` / `CUiControl` / `CUiAction` onto the
+ * imported entities. The report rows list what arrived; values stay on the target POD.
  */
 
 #include <array>
@@ -21,12 +21,12 @@ namespace rigkit {
 namespace project {
 
 /**
- * @brief Contract JSON (rig\.* keys) to host POD import report + UI layout rows.
- * @details Clears the ECS and writes floor **rigComponent** PODs. Domain codecs
- * (`CModLfo` / `CCad*` / ...) apply when their data pack filed them. Property
- * values live on entities (GetProperties); UI panel / control / action rows
- * here are layout only - never a second property store. Modulators advance via
- * `SModulators` (Update), not a free-function tick.
+ * @brief Contract JSON (rig\.* keys) to host POD import report.
+ * @details Clears the ECS and writes floor **rigComponent** PODs, including
+ * `CUi*`. Domain codecs (`CModLfo` / `CCad*` / ...) apply when their data pack
+ * filed them. Property values live on entities (`GetProperties`). Report rows
+ * name what arrived - they are not a second property store. Modulators advance
+ * via `SModulators` (Update), not a free-function tick.
  */
 struct ContractImportResult {
 	bool ok = false;
@@ -42,6 +42,7 @@ struct ContractImportResult {
 		std::string id;
 		std::string name;
 		std::string role;
+		std::string surface = "tool";
 		int order = 0;
 		bool visible = true;
 		float preferredWidth = 320.f;
@@ -121,7 +122,8 @@ ContractImportResult importContractJson(MEcs& ecs, const std::string& jsonText,
 /**
  * @brief Import using registered document codecs for component blobs.
  * @details Relationship still remaps by Contract document id (not `eN` handles).
- * UI layout rows, paint.solid present fallback, and material to fill stay special.
+ * `CUi*` refs resolve from those ids. paint.solid present fallback and material
+ * to fill stay special.
  */
 ContractImportResult importContractJson(MEcs& ecs, const std::string& jsonText,
 										const std::string& sourceLabel,
