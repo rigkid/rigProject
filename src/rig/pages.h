@@ -4,7 +4,7 @@
  * @file
  * @brief Page board helpers - make `CPage` entities and pan / zoom the board.
  * @details Header-only over rigComponent POD, so an app includes it and calls;
- * there is no page system to register. PDF emit is rigPdf.
+ * there is no page system to register. PDF emit is rigPdfWrite.
  */
 
 #include <algorithm>
@@ -57,7 +57,7 @@ struct PageNavInput {
  * group. Later pages sit under the last, centered on the board X. Shapes stay
  * page-local; sketch primitives parent to `currentPage()`. Call `placeOnPage`
  * after `make*`. Board `CTransform` is the view (pan + zoom). PDF emit is
- * **rigPdf**.
+ * **rigPdfWrite**.
  *
  * ```cpp
  * #include "rig/pages.h"
