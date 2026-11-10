@@ -109,8 +109,6 @@ bool contractSetString(MEcs& ecs, const ContractImportResult& doc, const std::st
 bool contractSetRgba(MEcs& ecs, const ContractImportResult& doc, const std::string& entityId,
 					 const std::string& propertyKey, const std::array<float, 4>& rgba);
 
-bool contractRunAction(MEcs& ecs, const ContractImportResult& doc, const std::string& actionId);
-
 ContractImportResult importContractFile(MEcs& ecs, const std::string& path);
 ContractImportResult importContractFile(MEcs& ecs, const std::string& path,
 										const ComponentSerializerRegistry& codecs);

@@ -6,9 +6,6 @@
 #include "ecs/PropertyReflection.h"
 #include "CAnchor.h"
 #include "CArc.h"
-#include "CCadBoolean.h"
-#include "CCadExtrude.h"
-#include "CCadRevolve.h"
 #include "CCamera.h"
 #include "CCode.h"
 #include "CDrawStyle.h"
@@ -16,8 +13,6 @@
 #include "CLight.h"
 #include "CLine.h"
 #include "CMesh.h"
-#include "CModBinding.h"
-#include "CModLfo.h"
 #include "CNurbsSurface.h"
 #include "CPage.h"
 #include "CPalette.h"
@@ -35,7 +30,6 @@
 #include "CSpline3d.h"
 #include "CStar.h"
 #include "CTransform.h"
-#include "CTween.h"
 #include "CUiPanel.h"
 #include "EntityProperty.h"
 #include "FaceInsets.h"
@@ -329,7 +323,7 @@ bool hasGeometry(const json& comps) {
 	return false;
 }
 
-bool importCadAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& comps) {
+bool importSplineAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& comps) {
 	bool wrote = false;
 	if (comps.contains("rig.geometry.spline3d")) {
 		const auto& sp = comps["rig.geometry.spline3d"];
@@ -1081,7 +1075,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			wroteGeometry = true;
 		}
 
-		if (importCadAndNurbs(ecs, entity, comps)) {
+		if (importSplineAndNurbs(ecs, entity, comps)) {
 			wroteGeometry = true;
 		}
 
@@ -1119,35 +1113,18 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		ecs.addComponent(pending.entity, rel);
 	}
 
-	// Remap binding/tween entity ids to live entity names.
-	auto remapEntityKey = [&](std::string& key) {
-		auto it = idMap.find(key);
-		if (it == idMap.end()) {
-			return;
+	// Domain codecs fix up their own name references (mod bindings, CAD
+	// operands) from document ids to live entity names. This pack only
+	// supplies the id-to-name map; it does not know the POD fields.
+	if (codecs) {
+		std::unordered_map<std::string, std::string> nameByDocumentId;
+		for (const auto& [docId, entity] : idMap) {
+			const std::string name = ecs.entityName(entity);
+			if (!name.empty()) {
+				nameByDocumentId[docId] = name;
+			}
 		}
-		const std::string n = ecs.entityName(it->second);
-		if (!n.empty()) {
-			key = n;
-		}
-	};
-	for (auto e : ecs.view<rigkit::ecs::CModBinding>()) {
-		auto& b = ecs.getComponent<rigkit::ecs::CModBinding>(e);
-		remapEntityKey(b.source);
-		remapEntityKey(b.target);
-	}
-	for (auto e : ecs.view<rigkit::ecs::CTween>()) {
-		remapEntityKey(ecs.getComponent<rigkit::ecs::CTween>(e).target);
-	}
-	for (auto e : ecs.view<rigkit::ecs::CCadBoolean>()) {
-		for (auto& id : ecs.getComponent<rigkit::ecs::CCadBoolean>(e).operands) {
-			remapEntityKey(id);
-		}
-	}
-	for (auto e : ecs.view<rigkit::ecs::CCadExtrude>()) {
-		remapEntityKey(ecs.getComponent<rigkit::ecs::CCadExtrude>(e).profile);
-	}
-	for (auto e : ecs.view<rigkit::ecs::CCadRevolve>()) {
-		remapEntityKey(ecs.getComponent<rigkit::ecs::CCadRevolve>(e).profile);
+		codecs->applyContractRemaps(ecs.registry(), nameByDocumentId);
 	}
 
 	// Contract docs often leave camera rotation as identity; host view is local -Z.
@@ -1297,22 +1274,6 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	if (!result.skipped.empty()) {
 		spdlog::info("[ContractImport] skipped {} unknown component key(s)", result.skipped.size());
 	}
-	{
-		size_t lfoN = 0;
-		size_t bindN = 0;
-		for (auto e : ecs.view<rigkit::ecs::CModLfo>()) {
-			(void)e;
-			++lfoN;
-		}
-		for (auto e : ecs.view<rigkit::ecs::CModBinding>()) {
-			(void)e;
-			++bindN;
-		}
-		if (lfoN > 0 || bindN > 0) {
-			spdlog::info("[ContractImport] modulators: {} LFO(s), {} binding(s) -> ECS", lfoN,
-						 bindN);
-		}
-	}
 	if (!result.panels.empty()) {
 		spdlog::info("[ContractImport] ui: {} panel(s), {} control(s), {} action(s)",
 					 result.panels.size(), result.controls.size(), result.actions.size());
@@ -1361,9 +1322,6 @@ std::optional<std::string> contractGetString(rigkit::MEcs& ecs, const ContractIm
 	if (e == entt::null) {
 		return std::nullopt;
 	}
-	if (ecs.hasComponent<rigkit::ecs::CModLfo>(e) && propertyKey == "waveform") {
-		return ecs.getComponent<rigkit::ecs::CModLfo>(e).waveform;
-	}
 	for (const auto& typeInfo : ecs.componentTypes()) {
 		if (!ecs.hasRegisteredComponent(typeInfo, e)) {
 			continue;
@@ -1406,10 +1364,6 @@ bool contractSetString(rigkit::MEcs& ecs, const ContractImportResult& doc,
 	if (e == entt::null) {
 		return false;
 	}
-	if (ecs.hasComponent<rigkit::ecs::CModLfo>(e) && propertyKey == "waveform") {
-		ecs.getComponent<rigkit::ecs::CModLfo>(e).waveform = value;
-		return true;
-	}
 	for (const auto& typeInfo : ecs.componentTypes()) {
 		if (!ecs.hasRegisteredComponent(typeInfo, e)) {
 			continue;
@@ -1449,18 +1403,6 @@ bool contractSetRgba(rigkit::MEcs& ecs, const ContractImportResult& doc,
 	s.fillB = rgba[2];
 	s.fillA = rgba[3];
 	return true;
-}
-
-bool contractRunAction(rigkit::MEcs& ecs, const ContractImportResult& doc,
-					   const std::string& actionId) {
-	(void)doc;
-	if (actionId == "lfo.resetPhase") {
-		for (auto e : ecs.view<rigkit::ecs::CModLfo>()) {
-			ecs.getComponent<rigkit::ecs::CModLfo>(e).phase = 0.f;
-		}
-		return true;
-	}
-	return false;
 }
 
 ContractImportResult importContractFile(rigkit::MEcs& ecs, const std::string& path) {

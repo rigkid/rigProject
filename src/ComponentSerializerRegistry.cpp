@@ -62,5 +62,18 @@ int ComponentSerializerRegistry::applyDeserializers(
 	return applied;
 }
 
+int ComponentSerializerRegistry::applyContractRemaps(
+	entt::registry& reg, const std::unordered_map<std::string, std::string>& nameByDocumentId) const {
+	int applied = 0;
+	for (const auto& ser : m_serializers) {
+		if (!ser.remapContractReferences) {
+			continue;
+		}
+		ser.remapContractReferences(reg, nameByDocumentId);
+		++applied;
+	}
+	return applied;
+}
+
 } // namespace project
 } // namespace rigkit

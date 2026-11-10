@@ -3,6 +3,7 @@
 #include <entt/entt.hpp>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "EntityIdRemap.h"
@@ -33,6 +34,15 @@ struct ComponentSerializer {
 	 * use this for domain parent/mask handles (e.g. pixel layers).
 	 */
 	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences;
+	/**
+	 * @brief Optional Contract-import rewrite of entity references stored as names.
+	 * @details The map is document entity id to live entity name. A codec replaces
+	 * a stored string only when it is a key in the map; values that already hold
+	 * entity names pass through. Used for name-reference PODs (mod bindings, CAD
+	 * operands) whose wire form names document entities, not live handles.
+	 */
+	std::function<void(entt::registry&, const std::unordered_map<std::string, std::string>&)>
+		remapContractReferences;
 };
 
 /**
@@ -56,6 +66,14 @@ class ComponentSerializerRegistry {
 	 */
 	int applyDeserializers(entt::registry& reg, entt::entity entity, const ordered_json& components,
 						   const std::vector<std::string>& skipSchemaIds = {}) const;
+
+	/**
+	 * @brief Run every codec's Contract reference fixup once all entities exist.
+	 * @param nameByDocumentId Document entity id to live entity name.
+	 * @return How many codecs ran a fixup.
+	 */
+	int applyContractRemaps(entt::registry& reg,
+							const std::unordered_map<std::string, std::string>& nameByDocumentId) const;
 
   private:
 	std::vector<ComponentSerializer> m_serializers;

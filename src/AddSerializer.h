@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include "ecs/MEcs.h"
 #include "ComponentSerializerRegistry.h"
 
@@ -24,7 +25,9 @@ void addSerializer(
 	ComponentSerializerRegistry& registry, const char* key, const char* schemaId,
 	std::function<bool(entt::registry&, entt::entity, ordered_json&)> serializeFn,
 	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserializeFn,
-	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {}) {
+	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {},
+	std::function<void(entt::registry&, const std::unordered_map<std::string, std::string>&)>
+		remapContractReferences = {}) {
 	ComponentSerializer ser;
 	ser.name = key;
 	ser.schemaId = schemaId;
@@ -37,6 +40,7 @@ void addSerializer(
 	ser.serialize = std::move(serializeFn);
 	ser.deserialize = std::move(deserializeFn);
 	ser.remapReferences = std::move(remapReferences);
+	ser.remapContractReferences = std::move(remapContractReferences);
 	registry.registerSerializer(std::move(ser));
 }
 
@@ -50,10 +54,12 @@ void registerComponent(
 	MEcs& ecs, ComponentSerializerRegistry& registry, const char* name, const char* schemaId,
 	std::function<bool(entt::registry&, entt::entity, ordered_json&)> serializeFn,
 	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserializeFn,
-	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {}) {
+	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {},
+	std::function<void(entt::registry&, const std::unordered_map<std::string, std::string>&)>
+		remapContractReferences = {}) {
 	ecs.registerComponent<T>(name, true);
 	addSerializer<T>(registry, name, schemaId, std::move(serializeFn), std::move(deserializeFn),
-					 std::move(remapReferences));
+					 std::move(remapReferences), std::move(remapContractReferences));
 }
 
 /**
