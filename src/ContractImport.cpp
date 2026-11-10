@@ -1125,6 +1125,10 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			}
 		}
 		codecs->applyContractRemaps(ecs.registry(), nameByDocumentId);
+		// Handle-reference codecs (layout masters, story flows) stashed
+		// document ids during deserialize; resolve them now every entity
+		// exists. Same rule: the codec owns its fields, this pack owns the map.
+		codecs->applyContractEntityResolutions(ecs.registry(), idMap);
 	}
 
 	// Contract docs often leave camera rotation as identity; host view is local -Z.

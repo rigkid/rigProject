@@ -27,7 +27,9 @@ void addSerializer(
 	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserializeFn,
 	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {},
 	std::function<void(entt::registry&, const std::unordered_map<std::string, std::string>&)>
-		remapContractReferences = {}) {
+		remapContractReferences = {},
+	std::function<void(entt::registry&, const std::unordered_map<std::string, entt::entity>&)>
+		resolveEntityReferences = {}) {
 	ComponentSerializer ser;
 	ser.name = key;
 	ser.schemaId = schemaId;
@@ -41,6 +43,7 @@ void addSerializer(
 	ser.deserialize = std::move(deserializeFn);
 	ser.remapReferences = std::move(remapReferences);
 	ser.remapContractReferences = std::move(remapContractReferences);
+	ser.resolveEntityReferences = std::move(resolveEntityReferences);
 	registry.registerSerializer(std::move(ser));
 }
 
@@ -56,10 +59,13 @@ void registerComponent(
 	std::function<bool(entt::registry&, entt::entity, const ordered_json&)> deserializeFn,
 	std::function<void(entt::registry&, const EntityIdMap&)> remapReferences = {},
 	std::function<void(entt::registry&, const std::unordered_map<std::string, std::string>&)>
-		remapContractReferences = {}) {
+		remapContractReferences = {},
+	std::function<void(entt::registry&, const std::unordered_map<std::string, entt::entity>&)>
+		resolveEntityReferences = {}) {
 	ecs.registerComponent<T>(name, true);
 	addSerializer<T>(registry, name, schemaId, std::move(serializeFn), std::move(deserializeFn),
-					 std::move(remapReferences), std::move(remapContractReferences));
+					 std::move(remapReferences), std::move(remapContractReferences),
+					 std::move(resolveEntityReferences));
 }
 
 /**

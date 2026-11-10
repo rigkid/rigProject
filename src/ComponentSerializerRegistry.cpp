@@ -75,5 +75,19 @@ int ComponentSerializerRegistry::applyContractRemaps(
 	return applied;
 }
 
+int ComponentSerializerRegistry::applyContractEntityResolutions(
+	entt::registry& reg,
+	const std::unordered_map<std::string, entt::entity>& entityByDocumentId) const {
+	int applied = 0;
+	for (const auto& ser : m_serializers) {
+		if (!ser.resolveEntityReferences) {
+			continue;
+		}
+		ser.resolveEntityReferences(reg, entityByDocumentId);
+		++applied;
+	}
+	return applied;
+}
+
 } // namespace project
 } // namespace rigkit

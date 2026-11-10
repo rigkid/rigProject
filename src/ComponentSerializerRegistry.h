@@ -43,6 +43,15 @@ struct ComponentSerializer {
 	 */
 	std::function<void(entt::registry&, const std::unordered_map<std::string, std::string>&)>
 		remapContractReferences;
+	/**
+	 * @brief Optional Contract-import resolution of entity references stored as handles.
+	 * @details The map is document entity id to live entity. A codec whose
+	 * deserializer stashed document-id references (because the target entity did
+	 * not exist yet) resolves them here, once every entity exists. Used for
+	 * handle-reference PODs (layout masters, story flows).
+	 */
+	std::function<void(entt::registry&, const std::unordered_map<std::string, entt::entity>&)>
+		resolveEntityReferences;
 };
 
 /**
@@ -74,6 +83,15 @@ class ComponentSerializerRegistry {
 	 */
 	int applyContractRemaps(entt::registry& reg,
 							const std::unordered_map<std::string, std::string>& nameByDocumentId) const;
+
+	/**
+	 * @brief Run every codec's entity-reference resolution once all entities exist.
+	 * @param entityByDocumentId Document entity id to live entity.
+	 * @return How many codecs ran a resolution.
+	 */
+	int applyContractEntityResolutions(
+		entt::registry& reg,
+		const std::unordered_map<std::string, entt::entity>& entityByDocumentId) const;
 
   private:
 	std::vector<ComponentSerializer> m_serializers;
