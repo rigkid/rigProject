@@ -49,8 +49,11 @@ void addSerializer(
 
 /**
  * @brief Announce a portable component and file its document codec.
- * @details Owning data packs call this from setup() when rigProject is loaded.
- * One schema id per call. A second schema on the same POD stays `addSerializer`.
+ * @details The code pack that fulfills the POD calls this from setup() when
+ * rigProject is loaded; the data pack only registers the component. Named
+ * exceptions (Plot, Show, Colorspace) file from their data home - see
+ * docs/packs_using.md. One schema id per call. A second schema on the same
+ * POD stays `addSerializer`.
  */
 template <typename T>
 void registerComponent(
