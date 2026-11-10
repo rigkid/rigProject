@@ -6,8 +6,8 @@
 #include "packs/rigComponent/src/CTransform.h"
 #include "packs/rigComponent/src/rig.h"
 #include "packs/rigComponent/src/rigComponent.h"
-#include "packs/rigProject/src/CPage.h"
-#include "packs/rigProject/src/CProject.h"
+#include "packs/rigProjectComponent/src/CPage.h"
+#include "packs/rigProjectComponent/src/CProject.h"
 #include "packs/rigSystems/src/rigSystems.h"
 
 #include <algorithm>

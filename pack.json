@@ -11,6 +11,11 @@
       "name": "rigComponent",
       "url": "https://github.com/rigkid/rigComponent.git",
       "ref": "main"
+    },
+    {
+      "name": "rigProjectComponent",
+      "url": "https://github.com/rigkid/rigProjectComponent.git",
+      "ref": "main"
     }
   ],
   "include_paths": [

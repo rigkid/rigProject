@@ -12,6 +12,19 @@ if(NOT TARGET rigComponent)
 	endif()
 endif()
 
+if(NOT TARGET rigProjectComponent)
+	if(DEFINED RIGKIT_ROOT AND NOT RIGKIT_ROOT STREQUAL "")
+		set(_rigProjectComponent_dir "${RIGKIT_ROOT}/packs/rigProjectComponent")
+	else()
+		set(_rigProjectComponent_dir "${CMAKE_SOURCE_DIR}/packs/rigProjectComponent")
+	endif()
+	if(EXISTS "${_rigProjectComponent_dir}/CMakeLists.txt")
+		add_subdirectory("${_rigProjectComponent_dir}" "${CMAKE_BINARY_DIR}/packs/rigProjectComponent")
+	else()
+		message(FATAL_ERROR "rigProject requires rigProjectComponent under packs/rigProjectComponent")
+	endif()
+endif()
+
 add_library(${PACK_NAME} STATIC
 	src/rigProject.cpp
 	src/rigProject.h
@@ -24,8 +37,6 @@ add_library(${PACK_NAME} STATIC
 	src/EntityIdRemap.cpp
 	src/EntityIdRemap.h
 	src/ProjectJson.h
-	src/CProject.h
-	src/CPage.h
 	src/rig/pages.h
 	src/ContractImport.cpp
 	src/ContractImport.h
@@ -66,7 +77,7 @@ if(NOT TARGET miniz)
 	)
 endif()
 
-target_link_libraries(${PACK_NAME} PUBLIC rigkit)
+target_link_libraries(${PACK_NAME} PUBLIC rigkit rigProjectComponent)
 if(TARGET rigComponent)
 	target_link_libraries(${PACK_NAME} PUBLIC rigComponent)
 endif()

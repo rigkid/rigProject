@@ -71,8 +71,7 @@ void rigProject::setup() {
 		return;
 	}
 
-	ecs->registerComponent<ecs::CProject>("Project", true);
-	ecs->registerComponent<ecs::CPage>("Page", true);
+	// CProject / CPage registration lives in rigProjectComponent (load it first).
 	project::registerPageSerializers(m_serializer.registry());
 
 	ecs->registerSystem("ProjectLoadSave", SystemPhase::Update, [this](MEcs& e) {
@@ -105,7 +104,7 @@ void rigProject::setup() {
 
 	rig::pages_detail::armSketchPlacement();
 
-	spdlog::info("[rigProject] registered Project/Page + load/save system (ext='{}')",
+	spdlog::info("[rigProject] registered Page codec + load/save system (ext='{}')",
 				 m_fileExtension);
 }
 
