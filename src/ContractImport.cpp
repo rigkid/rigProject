@@ -21,6 +21,7 @@
 #include "CText.h"
 #include "CRectangle.h"
 #include "CRegularPolygon.h"
+#include "CInstance.h"
 #include "CRelationship.h"
 #include "CRenderEnvironment.h"
 #include "CRenderMaterial.h"
@@ -569,6 +570,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	std::vector<PendingParent> pendingParents;
 	std::vector<std::pair<entt::entity, std::string>> pendingAlbedo;
 	std::vector<std::pair<entt::entity, std::string>> pendingHdri;
+	std::vector<std::pair<entt::entity, std::string>> pendingInstances;
 
 	// A host with a rig.paint.solid codec keeps paint-only entities as data
 	// (table inks, swatches). The LED-ellipse presentation below is only for
@@ -593,10 +595,8 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			}
 		}
 
-		if (comps.contains("rig.render.visibility") &&
-			comps["rig.render.visibility"].value("visible", true) == false) {
-			continue;
-		}
+		// Hidden entities still import: present honours `rig.render.visibility`.
+		// Dropping them here made Blender guides and linked-hide flags disappear.
 
 		std::string name = id;
 		if (comps.contains("rig.meta.named")) {
@@ -734,9 +734,20 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			result.actions.push_back(act);
 		}
 
+		if (comps.contains("rig.spatial.instance") && comps["rig.spatial.instance"].is_object()) {
+			const auto& inst = comps["rig.spatial.instance"];
+			if (inst.contains("source") && inst["source"].is_string()) {
+				const auto sourceId = inst["source"].get<std::string>();
+				if (!sourceId.empty()) {
+					pendingInstances.emplace_back(entity, sourceId);
+				}
+			}
+		}
+
 		if (codecs) {
 			ordered_json blob = comps;
-			codecs->applyDeserializers(ecs.registry(), entity, blob, {"rig.spatial.relationship"});
+			codecs->applyDeserializers(ecs.registry(), entity, blob,
+									  {"rig.spatial.relationship", "rig.spatial.instance"});
 			if (ecs.hasComponent<rigkit::ecs::CPage>(entity)) {
 				ecs.getComponent<rigkit::ecs::CPage>(entity).name = name;
 			}
@@ -1121,6 +1132,16 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		rel.parent = it->second;
 		rel.order = pending.order;
 		ecs.addComponent(pending.entity, rel);
+	}
+
+	for (const auto& pending : pendingInstances) {
+		auto it = idMap.find(pending.second);
+		if (it == idMap.end()) {
+			continue;
+		}
+		rigkit::ecs::CInstance instance;
+		instance.source = it->second;
+		ecs.addComponent(pending.first, instance);
 	}
 
 	// Domain codecs fix up their own name references (mod bindings, CAD
