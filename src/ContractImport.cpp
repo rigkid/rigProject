@@ -388,7 +388,17 @@ bool importSplineAndNurbs(rigkit::MEcs& ecs, entt::entity entity, const json& co
 	return wrote;
 }
 
+bool isIdentityRotation(const glm::quat& q) {
+	return std::fabs(q.x) < 1e-5f && std::fabs(q.y) < 1e-5f && std::fabs(q.z) < 1e-5f &&
+		   std::fabs(q.w) > 0.999f;
+}
+
+/// Aim local -Z at the origin when the light only carried a position (identity
+/// rotation). Authored rotations (Blender sun, USD, etc.) stay untouched.
 void aimDirectionalAtOrigin(rigkit::ecs::CTransform& transform) {
+	if (!isIdentityRotation(transform.rotation)) {
+		return;
+	}
 	const float len = glm::length(transform.position);
 	if (len < 1e-4f) {
 		return;
