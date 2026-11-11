@@ -248,6 +248,11 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.mod.lfo",
 	"rig.mod.binding",
 	"rig.anim.tween",
+	"rig.anim.skeleton",
+	"rig.anim.bind",
+	"rig.anim.skin",
+	"rig.anim.clip",
+	"rig.anim.track",
 	"rig.music.clock",
 	"rig.music.transport",
 	"rig.paint.solid",
@@ -890,8 +895,13 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			rigkit::ecs::CLight L;
 			L.enabled = light.value("enabled", true);
 			const std::string type = light.value("type", "directional");
-			L.type = (type == "point") ? rigkit::ecs::CLight::Type::Point
-									   : rigkit::ecs::CLight::Type::Directional;
+			if (type == "point") {
+				L.type = rigkit::ecs::CLight::Type::Point;
+			} else if (type == "spot") {
+				L.type = rigkit::ecs::CLight::Type::Spot;
+			} else {
+				L.type = rigkit::ecs::CLight::Type::Directional;
+			}
 			if (light.contains("rgb")) {
 				const glm::vec3 rgb = rgbFromJson(light["rgb"], {L.colorR, L.colorG, L.colorB});
 				L.colorR = rgb.r;
@@ -903,6 +913,9 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 			// Contract / web path is smooth shade; Kit default banded is for palette look.
 			L.banded = light.value("banded", false);
 			L.dither = light.value("dither", false);
+			L.range = light.value("range", L.range);
+			L.innerConeDegrees = light.value("innerConeDegrees", L.innerConeDegrees);
+			L.outerConeDegrees = light.value("outerConeDegrees", L.outerConeDegrees);
 			if (L.type == rigkit::ecs::CLight::Type::Directional) {
 				aimDirectionalAtOrigin(transform);
 				ecs.getComponent<rigkit::ecs::CTransform>(entity) = transform;
