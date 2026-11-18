@@ -8,8 +8,11 @@
  */
 
 #include <string>
+#include <vector>
 
 namespace rigkit {
+class MEcs;
+
 namespace project {
 
 /**
@@ -51,12 +54,31 @@ bool writeRigz(const std::string& destPath, const std::string& rigPath,
 			   const std::string& packetRoot, std::string* error = nullptr);
 
 /**
- * @brief Resolve a sidecar or host-root `asset_ref.path` against a packet root.
- * @details Tries `packetRoot/data/<path>` first (Contract), then
- * `packetRoot/<path>` (loose / legacy `data/...` prefixes). Absolute paths
- * pass through unchanged.
+ * @brief Copy linked media and fonts into the package and point each ref at the copy.
+ * @details Walks every `CAssetRef` of kind Image, Audio, Video, Model, or Font. Media
+ * lands in `data/links/`; fonts land in `data/fonts/`. Paths become `links/<name>` or
+ * `fonts/<name>` (relative to `data/`). Files already under `data/` or `assets/` are
+ * rewritten relative without a copy. Same source is copied once; name clashes get
+ * `-N`. Missing files are left untouched. Refs rewrite only after every copy succeeds.
+ * Documents and presets are not collected. Call before @ref writeRigz / `.rig` save.
+ * @return false (with @p error set) when @p packetRoot is empty or a copy fails.
+ */
+bool collectLinkedAssets(MEcs& ecs, const std::string& packetRoot, std::string* error = nullptr);
+
+/**
+ * @brief Resolve a sidecar or host-root `asset_ref.path` against search roots.
+ * @details Absolute paths and paths that already exist pass through. Otherwise
+ * tries each root as `root/data/<path>` then `root/<path>` (Contract package
+ * layout, then loose / legacy). Empty roots are skipped.
  */
 std::string resolvePacketAssetPath(const std::string& packetRoot, const std::string& assetPath);
+
+/**
+ * @brief Same as @ref resolvePacketAssetPath with an ordered list of roots
+ * (packet extract dir, document directory, …).
+ */
+std::string resolvePacketAssetPath(const std::vector<std::string>& roots,
+								   const std::string& assetPath);
 
 } // namespace project
 } // namespace rigkit

@@ -55,7 +55,10 @@ int ComponentSerializerRegistry::applyDeserializers(
 		if (skip.count(ser.schemaId) || !components.contains(ser.schemaId) || !ser.deserialize) {
 			continue;
 		}
-		if (ser.deserialize(reg, entity, components[ser.schemaId])) {
+		// A component with no fields can be written as null; read it as empty.
+		static const ordered_json kEmpty = ordered_json::object();
+		const auto& blob = components[ser.schemaId];
+		if (ser.deserialize(reg, entity, blob.is_null() ? kEmpty : blob)) {
 			++applied;
 		}
 	}
@@ -84,6 +87,18 @@ int ComponentSerializerRegistry::applyContractEntityResolutions(
 			continue;
 		}
 		ser.resolveEntityReferences(reg, entityByDocumentId);
+		++applied;
+	}
+	return applied;
+}
+
+int ComponentSerializerRegistry::clearContractEntityStaging(entt::registry& reg) const {
+	int applied = 0;
+	for (const auto& ser : m_serializers) {
+		if (!ser.clearPendingEntityReferences) {
+			continue;
+		}
+		ser.clearPendingEntityReferences(reg);
 		++applied;
 	}
 	return applied;

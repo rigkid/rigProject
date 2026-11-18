@@ -42,6 +42,7 @@ add_library(${PACK_NAME} STATIC
 	src/ContractImport.h
 	src/Rigz.cpp
 	src/Rigz.h
+	src/CollectLinks.cpp
 )
 
 include(FetchContent)

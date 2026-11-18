@@ -9,10 +9,15 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <unordered_map>
 
 namespace rigkit {
 namespace project {
 namespace {
+
+/// Entity name the project entity's extra components are saved under.
+constexpr const char* kProjectEntityName = "project";
 
 std::string iso8601Now() {
 	using clock = std::chrono::system_clock;
@@ -124,27 +129,32 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 		if (shouldSkipEntity(reg, entity)) {
 			continue;
 		}
-		if (isProjectMetadataEntity(reg, entity)) {
-			continue;
-		}
+		// The project entity's CProject lives in the `document` envelope. Any other
+		// component composed on it (for example rig.layout.chrome) rides a record
+		// named kProjectEntityName so load can fold it back onto the same entity.
+		const bool projectEntity = isProjectMetadataEntity(reg, entity);
 
 		ordered_json components = ordered_json::object();
-		const std::string name = ecs.entityName(entity);
+		const std::string name = projectEntity ? std::string(kProjectEntityName)
+											   : ecs.entityName(entity);
 		if (!name.empty()) {
 			components["rig.meta.named"] = ordered_json{{"name", name}};
 		}
 
+		bool wroteComponent = false;
 		for (const auto& ser : m_registry.serializers()) {
 			if (!ser.hasComponent || !ser.hasComponent(reg, entity)) {
 				continue;
 			}
-			ordered_json compJson;
+			// A component with no fields is still present: write {}, never null.
+			ordered_json compJson = ordered_json::object();
 			if (ser.serialize && ser.serialize(reg, entity, compJson)) {
 				components[ser.schemaId] = std::move(compJson);
+				wroteComponent = true;
 			}
 		}
 
-		if (components.empty()) {
+		if (components.empty() || (projectEntity && !wroteComponent)) {
 			continue;
 		}
 		ordered_json entityObj;
@@ -196,6 +206,9 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	}
 
 	ecs.clear();
+	// Registry ctx survives clear(); wipe staged layout/story refs before
+	// deserialize so a prior incomplete load cannot leak into this one.
+	m_registry.clearContractEntityStaging(ecs.registry());
 
 	auto docEntity = ecs.createEntity("project");
 	ecs::CProject doc;
@@ -205,6 +218,7 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	ecs.addComponent<ecs::CProject>(docEntity, doc);
 
 	EntityIdMap idMap;
+	bool projectFolded = false;
 	const auto& entities = root["entities"];
 	// Forward order matches save/collectEntities creation order so layered 2D
 	// present (shadow under plate under art) survives round-trip. Parents are
@@ -224,7 +238,11 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 		if (components.contains("rig.meta.named")) {
 			name = components["rig.meta.named"].value("name", "");
 		}
-		const entt::entity entity = ecs.createEntity(name);
+		// The record save wrote for the project entity's extra components folds
+		// back onto the project entity instead of making a second entity.
+		const bool foldIntoProject = !projectFolded && name == kProjectEntityName;
+		projectFolded = projectFolded || foldIntoProject;
+		const entt::entity entity = foldIntoProject ? docEntity : ecs.createEntity(name);
 		if (savedEntity != entt::null) {
 			idMap[static_cast<std::uint32_t>(savedEntity)] = entity;
 		}
@@ -235,7 +253,10 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 				continue;
 			}
 			if (ser.deserialize) {
-				ser.deserialize(reg, entity, components[ser.schemaId]);
+				// A field-less component written as null (older saves) reads as empty.
+				static const ordered_json kEmpty = ordered_json::object();
+				const auto& blob = components[ser.schemaId];
+				ser.deserialize(reg, entity, blob.is_null() ? kEmpty : blob);
 			}
 		}
 	}
@@ -245,6 +266,15 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 		if (ser.remapReferences) {
 			ser.remapReferences(ecs.registry(), idMap);
 		}
+	}
+	// Layout/story codecs stage eN refs into pending during deserialize;
+	// resolve them the same way Contract import does.
+	{
+		std::unordered_map<std::string, entt::entity> stringMap;
+		for (const auto& [saved, live] : idMap) {
+			stringMap[entityIdString(static_cast<entt::entity>(saved))] = live;
+		}
+		m_registry.applyContractEntityResolutions(ecs.registry(), stringMap);
 	}
 
 	if (m_readRootExtension) {

@@ -58,8 +58,8 @@ fs::path makeTempPackageDir() {
 	const auto base = fs::temp_directory_path() / "rigkit-rigz";
 	std::error_code ec;
 	fs::create_directories(base, ec);
-	std::mt19937_64 rng{static_cast<std::uint64_t>(
-		std::chrono::steady_clock::now().time_since_epoch().count())};
+	std::mt19937_64 rng{
+		static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())};
 	for (int i = 0; i < 64; ++i) {
 		const auto dir = base / ("pkg-" + std::to_string(rng()));
 		if (fs::create_directory(dir, ec)) {
@@ -191,7 +191,8 @@ void releasePackage(PackageOpen& opened) {
 	std::error_code ec;
 	fs::remove_all(opened.packetRoot, ec);
 	if (ec) {
-		spdlog::warn("[rigz] could not remove temp package {}: {}", opened.packetRoot, ec.message());
+		spdlog::warn("[rigz] could not remove temp package {}: {}", opened.packetRoot,
+					 ec.message());
 	}
 	opened.temporary = false;
 	opened.packetRoot.clear();
@@ -267,8 +268,12 @@ bool writeRigz(const std::string& destPath, const std::string& rigPath,
 		fs::create_directories(parent, ec);
 	}
 
+	// Write beside the target and rename over it only after the archive is
+	// finalized, so a failed save leaves the previous .rigz intact.
+	const std::string tmp = destPath + ".tmp";
+	fs::remove(tmp, ec);
 	mz_zip_archive zip{};
-	if (!mz_zip_writer_init_file(&zip, destPath.c_str(), 0)) {
+	if (!mz_zip_writer_init_file(&zip, tmp.c_str(), 0)) {
 		if (error) {
 			*error = "cannot create .rigz";
 		}
@@ -278,47 +283,72 @@ bool writeRigz(const std::string& destPath, const std::string& rigPath,
 	const std::string rootRig = fs::path(destPath).stem().string() + ".rig";
 	if (!addFileToZip(zip, fs::path(rigPath), rootRig, error)) {
 		mz_zip_writer_end(&zip);
+		fs::remove(tmp, ec);
 		return false;
 	}
 	if (!packetRoot.empty()) {
 		if (!addTreeToZip(zip, fs::path(packetRoot), "data", error) ||
 			!addTreeToZip(zip, fs::path(packetRoot), "assets", error)) {
 			mz_zip_writer_end(&zip);
+			fs::remove(tmp, ec);
 			return false;
 		}
 	}
 	if (!mz_zip_writer_finalize_archive(&zip)) {
 		mz_zip_writer_end(&zip);
+		fs::remove(tmp, ec);
 		if (error) {
 			*error = "failed to finalize .rigz";
 		}
 		return false;
 	}
-	mz_zip_writer_end(&zip);
+	if (!mz_zip_writer_end(&zip)) {
+		fs::remove(tmp, ec);
+		if (error) {
+			*error = "failed to close .rigz";
+		}
+		return false;
+	}
+	fs::rename(tmp, destPath, ec);
+	if (ec) {
+		fs::remove(tmp, ec);
+		if (error) {
+			*error = "failed to replace .rigz";
+		}
+		return false;
+	}
 	spdlog::info("[rigz] wrote {} (root {})", destPath, rootRig);
 	return true;
 }
 
-std::string resolvePacketAssetPath(const std::string& packetRoot, const std::string& assetPath) {
+std::string resolvePacketAssetPath(const std::vector<std::string>& roots,
+								   const std::string& assetPath) {
 	if (assetPath.empty()) {
 		return assetPath;
 	}
 	fs::path p(assetPath);
-	if (p.is_absolute()) {
+	std::error_code ec;
+	if (p.is_absolute() || fs::exists(p, ec)) {
 		return assetPath;
 	}
-	std::error_code ec;
-	if (!packetRoot.empty()) {
-		const fs::path underData = fs::path(packetRoot) / "data" / p;
+	for (const auto& root : roots) {
+		if (root.empty()) {
+			continue;
+		}
+		const fs::path underData = fs::path(root) / "data" / p;
 		if (fs::exists(underData, ec)) {
 			return underData.string();
 		}
-		const fs::path underRoot = fs::path(packetRoot) / p;
+		const fs::path underRoot = fs::path(root) / p;
 		if (fs::exists(underRoot, ec)) {
 			return underRoot.string();
 		}
 	}
 	return assetPath;
+}
+
+std::string resolvePacketAssetPath(const std::string& packetRoot, const std::string& assetPath) {
+	return resolvePacketAssetPath(std::vector<std::string>{packetRoot}, assetPath);
 }
 
 } // namespace project

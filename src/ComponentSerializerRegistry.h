@@ -52,6 +52,12 @@ struct ComponentSerializer {
 	 */
 	std::function<void(entt::registry&, const std::unordered_map<std::string, entt::entity>&)>
 		resolveEntityReferences;
+	/**
+	 * @brief Optional load-start wipe of staged entity refs on the registry.
+	 * @details Call before deserialize so a prior failed load cannot leave
+	 * stale pending refs on the same ECS (registry ctx survives @c clear()).
+	 */
+	std::function<void(entt::registry&)> clearPendingEntityReferences;
 };
 
 /**
@@ -92,6 +98,12 @@ class ComponentSerializerRegistry {
 	int applyContractEntityResolutions(
 		entt::registry& reg,
 		const std::unordered_map<std::string, entt::entity>& entityByDocumentId) const;
+
+	/**
+	 * @brief Wipe staged pending entity refs before a load begins deserialize.
+	 * @return How many codecs ran a clear.
+	 */
+	int clearContractEntityStaging(entt::registry& reg) const;
 
   private:
 	std::vector<ComponentSerializer> m_serializers;

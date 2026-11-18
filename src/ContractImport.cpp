@@ -36,6 +36,7 @@
 #include "FaceInsets.h"
 #include "MeshFaces.h"
 #include "PrimitiveBounds.h"
+#include "EntityIdRemap.h"
 #include "ProjectJson.h"
 #include "rig/create.h"
 
@@ -268,6 +269,7 @@ const std::unordered_set<std::string> kKnown = {
 	"rig.layout.master",
 	"rig.layout.applied_master",
 	"rig.layout.facing",
+	"rig.layout.chrome",
 	"rig.layout.paragraph_style",
 	"rig.layout.character_style",
 	"rig.layout.frame_chain",
@@ -557,6 +559,11 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 	}
 
 	ecs.clear();
+	// Registry ctx survives clear(); wipe staged layout/story refs from any
+	// prior incomplete load on this ECS before deserialize appends again.
+	if (codecs) {
+		codecs->clearContractEntityStaging(ecs.registry());
+	}
 	result.title = root.value("document", json::object())
 					   .value("title", sourceLabel.empty() ? "Rig document" : sourceLabel);
 	result.language = root.value("document", json::object()).value("language", "");
@@ -1173,6 +1180,26 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 		// document ids during deserialize; resolve them now every entity
 		// exists. Same rule: the codec owns its fields, this pack owns the map.
 		codecs->applyContractEntityResolutions(ecs.registry(), idMap);
+
+		// Same numeric id map ProjectSerializer::load builds: codecs that wrote
+		// stale eN handles via entityIdFromString (CText.font, layer_ref, …)
+		// need remapReferences or recycled version bits survive as invalid
+		// handles and strict PDF export drops every glyph.
+		EntityIdMap numericMap;
+		for (const auto& [docId, entity] : idMap) {
+			const entt::entity saved = entityIdFromString(docId);
+			if (saved != entt::null) {
+				numericMap[static_cast<std::uint32_t>(saved)] = entity;
+			}
+		}
+		if (!numericMap.empty()) {
+			remapEntityReferences(ecs.registry(), numericMap);
+			for (const auto& ser : codecs->serializers()) {
+				if (ser.remapReferences) {
+					ser.remapReferences(ecs.registry(), numericMap);
+				}
+			}
+		}
 	}
 
 	// Contract docs often leave camera rotation as identity; host view is local -Z.

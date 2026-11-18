@@ -4,7 +4,11 @@
  * @file
  * @brief Page board helpers - make `CPage` entities and pan / zoom the board.
  * @details Header-only over rigComponent POD, so an app includes it and calls;
- * there is no page system to register. PDF emit is rigPdfWrite.
+ * there is no page system to register. PDF emit is rigPdfWrite. The board state
+ * (pages, view, active page) lives in the bound ECS's registry context
+ * (`currentEcs`), so it follows a document when a host swaps registries and
+ * never outlives it. The calls without an `MEcs&` act on that bound ECS and do
+ * nothing when none is bound.
  */
 
 #include <algorithm>
@@ -74,7 +78,7 @@ struct PageNavInput {
 enum class PageLayout {
 	Stack,	///< Pages sit under each other; pan the board to scroll.
 	Single, ///< Only the active page is visible.
-	Spread, ///< Facing pairs side by side (recto-first: page 0 alone on the right).
+	Spread, ///< Facing spreads side by side (recto-first default: page 0 alone; hosts may use N>2).
 };
 
 entt::entity makePage(float w, float h, const char* unit = nullptr, bool plate = true);
@@ -170,31 +174,28 @@ struct Runtime {
 	PageLayout layout = PageLayout::Stack;
 };
 
-inline Runtime& rt() {
-	static Runtime r;
-	return r;
+/// The board of @p ecs. It lives in that document's registry context, so it follows the document
+/// when a host swaps registries (MEcs::exchangeDocument) and dies with it - no process-wide board.
+inline Runtime& board(rigkit::MEcs& ecs) {
+	return ecs.registry().ctx().emplace<Runtime>();
+}
+
+/// The board of the bound ECS (currentEcs), or null when none is bound.
+inline Runtime* bound() {
+	auto* ecs = currentEcs();
+	return ecs ? &board(*ecs) : nullptr;
 }
 
 inline rigkit::MEcs* ecsOr(rigkit::MEcs* passed) {
-	if (passed) {
-		rt().ecs = passed;
-		return passed;
-	}
-	if (rt().ecs) {
-		return rt().ecs;
-	}
-	rt().ecs = currentEcs();
-	return rt().ecs;
+	return passed ? passed : currentEcs();
 }
 
-inline void own(entt::entity e) {
+inline void own(Runtime& s, entt::entity e) {
 	if (e != entt::null) {
-		rt().owned.push_back(e);
+		s.owned.push_back(e);
 	}
 }
-
-inline void writeBoard() {
-	auto& s = rt();
+inline void writeBoard(Runtime& s) {
 	if (!s.ecs || s.board == entt::null || !s.ecs->hasComponent<rigkit::ecs::CTransform>(s.board)) {
 		return;
 	}
@@ -204,8 +205,7 @@ inline void writeBoard() {
 	t.scale = {s.zoom, s.zoom, 1.f};
 }
 
-inline void setActive(int index) {
-	auto& s = rt();
+inline void setActive(Runtime& s, int index) {
 	if (!s.ecs || s.project == entt::null ||
 		!s.ecs->hasComponent<rigkit::ecs::CProject>(s.project)) {
 		return;
@@ -222,8 +222,7 @@ inline void setParent(rigkit::MEcs& ecs, entt::entity child, entt::entity parent
 	ecs.registry().emplace_or_replace<rigkit::ecs::CRelationship>(child, rel);
 }
 
-inline bool pageExtent(entt::entity e, float& x, float& y, float& w, float& h) {
-	auto& s = rt();
+inline bool pageExtent(Runtime& s, entt::entity e, float& x, float& y, float& w, float& h) {
 	if (!s.ecs || !s.ecs->hasComponent<rigkit::ecs::CPage>(e) ||
 		!s.ecs->hasComponent<rigkit::ecs::CTransform>(e)) {
 		return false;
@@ -237,16 +236,14 @@ inline bool pageExtent(entt::entity e, float& x, float& y, float& w, float& h) {
 	return true;
 }
 
-inline bool pageVisible(entt::entity e) {
-	auto& s = rt();
+inline bool pageVisible(Runtime& s, entt::entity e) {
 	if (!s.ecs || !s.ecs->hasComponent<rigkit::ecs::CLayer>(e)) {
 		return true;
 	}
 	return s.ecs->getComponent<rigkit::ecs::CLayer>(e).visible;
 }
 
-inline void applyLayout() {
-	auto& s = rt();
+inline void applyLayout(Runtime& s) {
 	if (!s.ecs) {
 		return;
 	}
@@ -333,15 +330,14 @@ inline void applyLayout() {
 	s.stackY = y;
 }
 
-inline bool stackBounds(float& minX, float& minY, float& maxX, float& maxY) {
-	auto& s = rt();
+inline bool stackBounds(Runtime& s, float& minX, float& minY, float& maxX, float& maxY) {
 	bool any = false;
 	for (auto e : s.pages) {
-		if (!pageVisible(e)) {
+		if (!pageVisible(s, e)) {
 			continue;
 		}
 		float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
-		if (!pageExtent(e, x, y, w, h)) {
+		if (!pageExtent(s, e, x, y, w, h)) {
 			continue;
 		}
 		if (!any) {
@@ -360,8 +356,7 @@ inline bool stackBounds(float& minX, float& minY, float& maxX, float& maxY) {
 	return any;
 }
 
-inline void applyZoom(float factor, float pivotX, float pivotY) {
-	auto& s = rt();
+inline void applyZoom(Runtime& s, float factor, float pivotX, float pivotY) {
 	const float oldZ = s.zoom;
 	s.zoom = std::clamp(oldZ * factor, kZoomMin, kZoomMax);
 	if (std::fabs(s.zoom - oldZ) < 1e-6f) {
@@ -371,11 +366,10 @@ inline void applyZoom(float factor, float pivotX, float pivotY) {
 	s.panX = pivotX - (pivotX - s.panX) * k;
 	s.panY = pivotY - (pivotY - s.panY) * k;
 	s.userNav = true;
-	writeBoard();
+	writeBoard(s);
 }
 
-inline void markActiveFromView() {
-	auto& s = rt();
+inline void markActiveFromView(Runtime& s) {
 	if (!s.ecs || s.pages.empty()) {
 		return;
 	}
@@ -387,7 +381,7 @@ inline void markActiveFromView() {
 	float bestDist = 1e9f;
 	for (int i = 0; i < static_cast<int>(s.pages.size()); ++i) {
 		float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
-		if (!pageExtent(s.pages[static_cast<size_t>(i)], x, y, w, h)) {
+		if (!pageExtent(s, s.pages[static_cast<size_t>(i)], x, y, w, h)) {
 			continue;
 		}
 		const float mid = s.panY + (y + h * 0.5f) * s.zoom;
@@ -397,11 +391,10 @@ inline void markActiveFromView() {
 			best = i;
 		}
 	}
-	setActive(best);
+	setActive(s, best);
 }
 
-inline void ensureProject(rigkit::MEcs& ecs) {
-	auto& s = rt();
+inline void ensureProject(Runtime& s, rigkit::MEcs& ecs) {
 	if (s.project != entt::null && ecs.registry().valid(s.project)) {
 		return;
 	}
@@ -414,19 +407,18 @@ inline void ensureProject(rigkit::MEcs& ecs) {
 	s.project = ecs.createEntity("project");
 	ecs.addComponent<rigkit::ecs::CProject>(s.project, rigkit::ecs::CProject{});
 	s.ownProject = true;
-	own(s.project);
+	own(s, s.project);
 }
 
-inline void ensureBoard(rigkit::MEcs& ecs) {
-	auto& s = rt();
+inline void ensureBoard(Runtime& s, rigkit::MEcs& ecs) {
 	if (s.board != entt::null && ecs.registry().valid(s.board)) {
 		return;
 	}
 	s.board = ecs.createEntity("page-board");
 	ecs.addComponent<rigkit::ecs::CTransform>(s.board, rigkit::ecs::CTransform{});
 	ecs.addComponent<rigkit::ecs::CGroup>(s.board, rigkit::ecs::CGroup{});
-	own(s.board);
-	writeBoard();
+	own(s, s.board);
+	writeBoard(s);
 }
 
 inline rigkit::ecs::CDrawStyle paperStyle() {
@@ -439,8 +431,7 @@ inline rigkit::ecs::CDrawStyle paperStyle() {
 	return s;
 }
 
-inline void resetState() {
-	auto& s = rt();
+inline void resetState(Runtime& s) {
 	s.project = entt::null;
 	s.board = entt::null;
 	s.current = entt::null;
@@ -469,10 +460,10 @@ inline entt::entity makePage(float w, float h, const char* unit, bool plate) {
 }
 
 inline entt::entity makePage(rigkit::MEcs& ecs, float w, float h, const char* unit, bool plate) {
-	auto& s = pages_detail::rt();
+	auto& s = pages_detail::board(ecs);
 	s.ecs = &ecs;
-	pages_detail::ensureProject(ecs);
-	pages_detail::ensureBoard(ecs);
+	pages_detail::ensureProject(s, ecs);
+	pages_detail::ensureBoard(s, ecs);
 
 	const int index = static_cast<int>(s.pages.size());
 	auto e = ecs.createEntity("page-" + std::to_string(index));
@@ -497,8 +488,8 @@ inline entt::entity makePage(rigkit::MEcs& ecs, float w, float h, const char* un
 	s.current = e;
 	pages_detail::armSketchPlacement();
 	s.stackY += h + pages_detail::kPageGap;
-	pages_detail::own(e);
-	pages_detail::setActive(index);
+	pages_detail::own(s, e);
+	pages_detail::setActive(s, index);
 
 	if (plate) {
 		auto plateE = ecs.createEntity("page-plate-" + std::to_string(index));
@@ -509,28 +500,30 @@ inline entt::entity makePage(rigkit::MEcs& ecs, float w, float h, const char* un
 		ecs.addComponent<rigkit::ecs::CRectangle>(plateE, rect);
 		ecs.addComponent<rigkit::ecs::CDrawStyle>(plateE, pages_detail::paperStyle());
 		pages_detail::setParent(ecs, plateE, e);
-		pages_detail::own(plateE);
+		pages_detail::own(s, plateE);
 	}
 	s.fitted = false;
-	pages_detail::applyLayout();
-	pages_detail::writeBoard();
+	pages_detail::applyLayout(s);
+	pages_detail::writeBoard(s);
 	return e;
 }
 
 inline entt::entity pageBoard() {
-	return pages_detail::rt().board;
+	auto* s = pages_detail::bound();
+	return s ? s->board : entt::null;
 }
 
 inline entt::entity currentPage() {
-	return pages_detail::rt().current;
+	auto* s = pages_detail::bound();
+	return s ? s->current : entt::null;
 }
 
 inline void setPage(int index) {
-	auto& s = pages_detail::rt();
-	if (index < 0 || index >= static_cast<int>(s.pages.size())) {
+	auto* s = pages_detail::bound();
+	if (!s || index < 0 || index >= static_cast<int>(s->pages.size())) {
 		return;
 	}
-	s.current = s.pages[static_cast<size_t>(index)];
+	s->current = s->pages[static_cast<size_t>(index)];
 	pages_detail::armSketchPlacement();
 }
 
@@ -542,7 +535,7 @@ inline void placeOnPage(entt::entity child) {
 }
 
 inline void placeOnPage(rigkit::MEcs& ecs, entt::entity child) {
-	auto& s = pages_detail::rt();
+	const auto& s = pages_detail::board(ecs);
 	if (child == entt::null || s.current == entt::null || !ecs.registry().valid(s.current)) {
 		return;
 	}
@@ -550,70 +543,78 @@ inline void placeOnPage(rigkit::MEcs& ecs, entt::entity child) {
 }
 
 inline int pageCount() {
-	return static_cast<int>(pages_detail::rt().pages.size());
+	auto* s = pages_detail::bound();
+	return s ? static_cast<int>(s->pages.size()) : 0;
 }
 
 inline int activePageIndex() {
-	auto& s = pages_detail::rt();
-	if (!s.ecs || s.project == entt::null ||
-		!s.ecs->hasComponent<rigkit::ecs::CProject>(s.project)) {
+	auto* s = pages_detail::bound();
+	if (!s || !s->ecs || s->project == entt::null ||
+		!s->ecs->hasComponent<rigkit::ecs::CProject>(s->project)) {
 		return 0;
 	}
-	return s.ecs->getComponent<rigkit::ecs::CProject>(s.project).activePageIndex;
+	return s->ecs->getComponent<rigkit::ecs::CProject>(s->project).activePageIndex;
 }
 
 inline entt::entity pageEntity(int index) {
-	auto& s = pages_detail::rt();
-	if (index < 0 || index >= static_cast<int>(s.pages.size())) {
+	auto* s = pages_detail::bound();
+	if (!s || index < 0 || index >= static_cast<int>(s->pages.size())) {
 		return entt::null;
 	}
-	return s.pages[static_cast<size_t>(index)];
+	return s->pages[static_cast<size_t>(index)];
 }
 
 inline PageLayout pageLayout() {
-	return pages_detail::rt().layout;
+	auto* s = pages_detail::bound();
+	return s ? s->layout : PageLayout::Stack;
 }
 
 inline void setPageLayout(PageLayout layout) {
-	auto& s = pages_detail::rt();
-	s.layout = layout;
-	pages_detail::applyLayout();
-	s.userNav = false;
-	s.fitted = false;
+	auto* s = pages_detail::bound();
+	if (!s) {
+		return;
+	}
+	s->layout = layout;
+	pages_detail::applyLayout(*s);
+	s->userNav = false;
+	s->fitted = false;
 	fitPages();
 }
 
 inline float pageZoom() {
-	return pages_detail::rt().zoom;
+	auto* s = pages_detail::bound();
+	return s ? s->zoom : 1.f;
 }
 
 inline void panPages(float dx, float dy) {
-	auto& s = pages_detail::rt();
-	if (!s.ecs || s.pages.empty()) {
+	auto* s = pages_detail::bound();
+	if (!s || !s->ecs || s->pages.empty()) {
 		return;
 	}
-	s.panX += dx;
-	s.panY += dy;
-	s.userNav = true;
-	pages_detail::writeBoard();
-	pages_detail::markActiveFromView();
+	s->panX += dx;
+	s->panY += dy;
+	s->userNav = true;
+	pages_detail::writeBoard(*s);
+	pages_detail::markActiveFromView(*s);
 }
 
 inline void zoomPages(float factor, float pivotX, float pivotY) {
-	if (!pages_detail::rt().ecs || pages_detail::rt().pages.empty()) {
+	auto* s = pages_detail::bound();
+	if (!s || !s->ecs || s->pages.empty()) {
 		return;
 	}
-	pages_detail::applyZoom(factor, pivotX, pivotY);
-	pages_detail::markActiveFromView();
+	pages_detail::applyZoom(*s, factor, pivotX, pivotY);
+	pages_detail::markActiveFromView(*s);
 }
 
 inline void fitPages() {
-	auto& s = pages_detail::rt();
-	if (!s.ecs || s.pages.empty()) {
+	auto* sp = pages_detail::bound();
+	if (!sp || !sp->ecs || sp->pages.empty()) {
 		return;
 	}
+	auto& s = *sp;
 	float minX = 0.f, minY = 0.f, maxX = 0.f, maxY = 0.f;
-	if (!pages_detail::stackBounds(minX, minY, maxX, maxY)) {
+	if (!pages_detail::stackBounds(s, minX, minY, maxX, maxY)) {
 		return;
 	}
 	const float sw = std::max(1.f, maxX - minX);
@@ -629,19 +630,20 @@ inline void fitPages() {
 	s.fitted = true;
 	s.fitViewW = vw;
 	s.fitViewH = vh;
-	pages_detail::writeBoard();
-	pages_detail::markActiveFromView();
+	pages_detail::writeBoard(s);
+	pages_detail::markActiveFromView(s);
 }
 
 inline void focusPage(int index) {
-	auto& s = pages_detail::rt();
-	if (!s.ecs || s.pages.empty()) {
+	auto* sp = pages_detail::bound();
+	if (!sp || !sp->ecs || sp->pages.empty()) {
 		return;
 	}
+	auto& s = *sp;
 	const int last = static_cast<int>(s.pages.size()) - 1;
 	index = std::clamp(index, 0, last);
 	float x = 0.f, y = 0.f, w = 0.f, h = 0.f;
-	if (!pages_detail::pageExtent(s.pages[static_cast<size_t>(index)], x, y, w, h)) {
+	if (!pages_detail::pageExtent(s, s.pages[static_cast<size_t>(index)], x, y, w, h)) {
 		return;
 	}
 	const float vw = (s.viewW > 1.f) ? s.viewW : w;
@@ -650,15 +652,15 @@ inline void focusPage(int index) {
 	const float vy = (s.viewH > 1.f) ? s.viewY : 0.f;
 	s.current = s.pages[static_cast<size_t>(index)];
 	pages_detail::armSketchPlacement();
-	pages_detail::setActive(index);
-	pages_detail::applyLayout();
-	if (!pages_detail::pageExtent(s.current, x, y, w, h)) {
+	pages_detail::setActive(s, index);
+	pages_detail::applyLayout(s);
+	if (!pages_detail::pageExtent(s, s.current, x, y, w, h)) {
 		return;
 	}
 	s.panX = vx + vw * 0.5f - (x + w * 0.5f) * s.zoom;
 	s.panY = vy + vh * 0.5f - (y + h * 0.5f) * s.zoom;
 	s.userNav = true;
-	pages_detail::writeBoard();
+	pages_detail::writeBoard(s);
 }
 
 inline void scrollPages(float dy) {
@@ -666,14 +668,19 @@ inline void scrollPages(float dy) {
 }
 
 inline void pollPageScroll(float wheel, bool uiWantsMouse) {
-	if (uiWantsMouse || pages_detail::rt().pages.empty() || std::fabs(wheel) < 1e-4f) {
+	auto* s = pages_detail::bound();
+	if (uiWantsMouse || !s || s->pages.empty() || std::fabs(wheel) < 1e-4f) {
 		return;
 	}
 	scrollPages(wheel * pages_detail::kWheelPan);
 }
 
 inline void pollPageNav(const PageNavInput& in) {
-	auto& s = pages_detail::rt();
+	auto* sp = pages_detail::bound();
+	if (!sp) {
+		return;
+	}
+	auto& s = *sp;
 	if (in.viewW > 1.f && in.viewH > 1.f) {
 		s.viewX = in.viewX;
 		s.viewY = in.viewY;
@@ -713,41 +720,50 @@ inline void pollPageNav(const PageNavInput& in) {
 		panPages(in.wheelH * pages_detail::kWheelPan, 0.f);
 	}
 	if (std::fabs(in.wheel) >= 1e-4f) {
-		pages_detail::applyZoom(std::pow(1.12f, in.wheel), in.mouseX, in.mouseY);
-		pages_detail::markActiveFromView();
+		pages_detail::applyZoom(s, std::pow(1.12f, in.wheel), in.mouseX, in.mouseY);
+		pages_detail::markActiveFromView(s);
 	}
 }
 
 inline void clearPages() {
-	auto& s = pages_detail::rt();
-	rigkit::MEcs* kept = s.ecs;
+	auto* s = pages_detail::bound();
+	if (!s) {
+		return;
+	}
+	rigkit::MEcs* kept = s->ecs;
 	if (kept) {
-		for (auto e : s.owned) {
+		for (auto e : s->owned) {
 			if (kept->registry().valid(e)) {
 				kept->destroyEntity(e);
 			}
 		}
 	}
-	pages_detail::resetState();
-	s.ecs = kept;
+	pages_detail::resetState(*s);
+	s->ecs = kept;
 }
 
 inline void resetPages() {
-	pages_detail::rt().ecs = nullptr;
-	pages_detail::resetState();
+	auto* s = pages_detail::bound();
+	if (!s) {
+		return;
+	}
+	s->ecs = nullptr;
+	pages_detail::resetState(*s);
 }
 
 inline void ensureProject(rigkit::MEcs& ecs) {
-	pages_detail::rt().ecs = &ecs;
-	pages_detail::ensureProject(ecs);
+	auto& s = pages_detail::board(ecs);
+	s.ecs = &ecs;
+	pages_detail::ensureProject(s, ecs);
 }
 
 inline void adoptPages(rigkit::MEcs& ecs, const std::vector<entt::entity>& sortedPages) {
-	resetPages();
-	auto& s = pages_detail::rt();
+	auto& s = pages_detail::board(ecs);
+	s.ecs = nullptr;
+	pages_detail::resetState(s);
 	s.ecs = &ecs;
-	pages_detail::ensureProject(ecs);
-	pages_detail::ensureBoard(ecs);
+	pages_detail::ensureProject(s, ecs);
+	pages_detail::ensureBoard(s, ecs);
 	for (auto e : sortedPages) {
 		if (e == entt::null || !ecs.registry().valid(e)) {
 			continue;
