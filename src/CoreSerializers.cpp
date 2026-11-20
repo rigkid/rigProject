@@ -1,5 +1,7 @@
 #include "core/TypeJson.h"
 #include "AddSerializer.h"
+#include "CBookBinding.h"
+#include "CBookPublication.h"
 #include "CPage.h"
 #include "FaceInsets.h"
 #include "ProjectSerializer.h"
@@ -75,8 +77,107 @@ bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j)
 	return true;
 }
 
+bool serializeBookBinding(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CBookBinding>(e)) {
+		return false;
+	}
+	const auto& b = reg.get<ecs::CBookBinding>(e);
+	static const char* const kForm[] = {"paperback", "case", "jacket", "saddle"};
+	const int fi = static_cast<int>(b.form);
+	if (fi >= 0 && fi < 4) {
+		j["form"] = kForm[fi];
+	}
+	j["paperCaliper"] = b.paperCaliper;
+	j["caliperUnit"] = (b.caliperUnit == ecs::BookCaliperUnit::In) ? "in" : "mm";
+	if (b.boardThickness > 0.f) {
+		j["boardThickness"] = b.boardThickness;
+	}
+	if (b.hinge > 0.f) {
+		j["hinge"] = b.hinge;
+	}
+	if (b.wrap > 0.f) {
+		j["wrap"] = b.wrap;
+	}
+	if (b.flap > 0.f) {
+		j["flap"] = b.flap;
+	}
+	if (b.fold > 0.f) {
+		j["fold"] = b.fold;
+	}
+	if (b.hasSpineOverride) {
+		j["spineOverride"] = b.spineOverride;
+	}
+	return true;
+}
+
+bool deserializeBookBinding(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CBookBinding b;
+	const std::string form = j.value("form", std::string("paperback"));
+	if (form == "case") {
+		b.form = ecs::BookBindingForm::Case;
+	} else if (form == "jacket") {
+		b.form = ecs::BookBindingForm::Jacket;
+	} else if (form == "saddle") {
+		b.form = ecs::BookBindingForm::Saddle;
+	} else {
+		b.form = ecs::BookBindingForm::Paperback;
+	}
+	b.paperCaliper = j.value("paperCaliper", b.paperCaliper);
+	const std::string unit = j.value("caliperUnit", std::string("mm"));
+	b.caliperUnit = (unit == "in") ? ecs::BookCaliperUnit::In : ecs::BookCaliperUnit::Mm;
+	b.boardThickness = j.value("boardThickness", 0.f);
+	b.hinge = j.value("hinge", 0.f);
+	b.wrap = j.value("wrap", 0.f);
+	b.flap = j.value("flap", 0.f);
+	b.fold = j.value("fold", 0.f);
+	if (j.contains("spineOverride")) {
+		b.hasSpineOverride = true;
+		b.spineOverride = j.value("spineOverride", 0.f);
+	}
+	reg.emplace_or_replace<ecs::CBookBinding>(e, std::move(b));
+	return true;
+}
+
+bool serializeBookPublication(entt::registry& reg, entt::entity e, ordered_json& j) {
+	if (!reg.all_of<ecs::CBookPublication>(e)) {
+		return false;
+	}
+	const auto& p = reg.get<ecs::CBookPublication>(e);
+	if (p.pageCount > 0) {
+		j["pageCount"] = p.pageCount;
+	}
+	static const char* const kForm[] = {"hardcover", "paperback", "ebook", "audiobook", "other"};
+	if (p.productForm >= 0 && p.productForm < 5) {
+		j["productForm"] = kForm[p.productForm];
+	}
+	return !j.empty();
+}
+
+bool deserializeBookPublication(entt::registry& reg, entt::entity e, const ordered_json& j) {
+	ecs::CBookPublication p;
+	p.pageCount = j.value("pageCount", 0u);
+	const std::string form = j.value("productForm", std::string("paperback"));
+	if (form == "hardcover") {
+		p.productForm = 0;
+	} else if (form == "ebook") {
+		p.productForm = 2;
+	} else if (form == "audiobook") {
+		p.productForm = 3;
+	} else if (form == "other") {
+		p.productForm = 4;
+	} else {
+		p.productForm = 1;
+	}
+	reg.emplace_or_replace<ecs::CBookPublication>(e, std::move(p));
+	return true;
+}
+
 void registerInto(ComponentSerializerRegistry& registry) {
 	addSerializer<ecs::CPage>(registry, "Page", "rig.layout.page", serializePage, deserializePage);
+	addSerializer<ecs::CBookBinding>(registry, "BookBinding", "rig.book.binding",
+									 serializeBookBinding, deserializeBookBinding);
+	addSerializer<ecs::CBookPublication>(registry, "BookPublication", "rig.book.publication",
+										 serializeBookPublication, deserializeBookPublication);
 }
 
 } // namespace
