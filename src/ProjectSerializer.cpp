@@ -64,6 +64,12 @@ void syncEnvelopeFromProject(const ecs::CProject& doc, ordered_json& envelope) {
 	if (!doc.trapped.empty() && doc.trapped != "unknown") {
 		envelope["trapped"] = doc.trapped;
 	}
+	if (!doc.untaggedRgbProfile.empty() && doc.untaggedRgbProfile != "srgb") {
+		envelope["untaggedRgbProfile"] = doc.untaggedRgbProfile;
+	}
+	if (!doc.renderingIntent.empty() && doc.renderingIntent != "relative-colorimetric") {
+		envelope["renderingIntent"] = doc.renderingIntent;
+	}
 	if (!doc.path.empty()) {
 		envelope["path"] = doc.path;
 	}
@@ -85,6 +91,8 @@ void applyEnvelopeToProject(ecs::CProject& doc, const ordered_json& envelope) {
 	doc.outputRegistry = envelope.value("outputRegistry", doc.outputRegistry);
 	doc.outputProfile = envelope.value("outputProfile", doc.outputProfile);
 	doc.trapped = envelope.value("trapped", doc.trapped);
+	doc.untaggedRgbProfile = envelope.value("untaggedRgbProfile", doc.untaggedRgbProfile);
+	doc.renderingIntent = envelope.value("renderingIntent", doc.renderingIntent);
 	if (envelope.contains("path")) {
 		doc.path = envelope.value("path", doc.path);
 	}
@@ -135,8 +143,8 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 		const bool projectEntity = isProjectMetadataEntity(reg, entity);
 
 		ordered_json components = ordered_json::object();
-		const std::string name = projectEntity ? std::string(kProjectEntityName)
-											   : ecs.entityName(entity);
+		const std::string name =
+			projectEntity ? std::string(kProjectEntityName) : ecs.entityName(entity);
 		if (!name.empty()) {
 			components["rig.meta.named"] = ordered_json{{"name", name}};
 		}
