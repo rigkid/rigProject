@@ -109,7 +109,8 @@ bool ProjectSerializer::shouldSkipEntity(entt::registry& reg, entt::entity e) {
 	return reg.all_of<ecs::CTransient>(e);
 }
 
-bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
+bool ProjectSerializer::buildDocumentJson(MEcs& ecs, ordered_json& root,
+										  bool touchTimestamps) const {
 	auto& reg = ecs.registry();
 
 	ecs::CProject* docPtr = nullptr;
@@ -122,12 +123,14 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 		return false;
 	}
 
-	if (docPtr->createdAt.empty()) {
-		docPtr->createdAt = iso8601Now();
+	if (touchTimestamps) {
+		if (docPtr->createdAt.empty()) {
+			docPtr->createdAt = iso8601Now();
+		}
+		docPtr->modifiedAt = iso8601Now();
 	}
-	docPtr->modifiedAt = iso8601Now();
 
-	ordered_json root;
+	root = ordered_json::object();
 	// Version first: it is what tells any reader this is a Rig document at all.
 	root["rig"] = kContractVersion;
 	syncEnvelopeFromProject(*docPtr, root["document"]);
@@ -175,26 +178,18 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 	if (m_writeRootExtension) {
 		m_writeRootExtension(ecs, root);
 	}
-
-	if (!savePrettyOrderedJson(path, root)) {
-		return false;
-	}
-
-	docPtr->path = path;
-	docPtr->dirty = false;
-	spdlog::info("[rigProject] saved '{}'", path);
 	return true;
 }
 
-bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
-	ordered_json root = loadOrderedJson(path);
+bool ProjectSerializer::applyDocumentJson(MEcs& ecs, const ordered_json& root,
+										  const std::string& pathHint) {
 	if (root.is_null() || root.empty()) {
 		return false;
 	}
 	if (!root.contains("rig")) {
 		spdlog::error("[rigProject] '{}' is not a Rig document: missing the \"rig\" version "
 					  "field. Files written before RigKit spoke the Contract cannot be read.",
-					  path);
+					  pathHint.empty() ? "<memory>" : pathHint);
 		return false;
 	}
 	if (!root.contains("entities")) {
@@ -221,7 +216,9 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 	auto docEntity = ecs.createEntity("project");
 	ecs::CProject doc;
 	applyEnvelopeToProject(doc, docJson);
-	doc.path = path;
+	if (!pathHint.empty()) {
+		doc.path = pathHint;
+	}
 	doc.dirty = false;
 	ecs.addComponent<ecs::CProject>(docEntity, doc);
 
@@ -289,8 +286,62 @@ bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
 		m_readRootExtension(ecs, root);
 	}
 
-	spdlog::info("[rigProject] loaded '{}' (entities={})", path, ecs.getEntityCount());
+	spdlog::info("[rigProject] loaded '{}' (entities={})",
+				 pathHint.empty() ? "<memory>" : pathHint, ecs.getEntityCount());
 	return true;
+}
+
+bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
+	ordered_json root;
+	if (!buildDocumentJson(ecs, root, true)) {
+		return false;
+	}
+	if (!savePrettyOrderedJson(path, root)) {
+		return false;
+	}
+
+	for (auto entity : ecs.registry().view<ecs::CProject>()) {
+		auto& doc = ecs.registry().get<ecs::CProject>(entity);
+		doc.path = path;
+		doc.dirty = false;
+		break;
+	}
+	spdlog::info("[rigProject] saved '{}'", path);
+	return true;
+}
+
+bool ProjectSerializer::saveToString(MEcs& ecs, std::string& out) const {
+	ordered_json root;
+	if (!buildDocumentJson(ecs, root, false)) {
+		return false;
+	}
+	try {
+		out = root.dump(4);
+	} catch (const std::exception& e) {
+		spdlog::error("[rigProject] saveToString failed: {}", e.what());
+		return false;
+	}
+	return true;
+}
+
+bool ProjectSerializer::load(MEcs& ecs, const std::string& path) {
+	ordered_json root = loadOrderedJson(path);
+	return applyDocumentJson(ecs, root, path);
+}
+
+bool ProjectSerializer::loadFromString(MEcs& ecs, const std::string& json) {
+	ordered_json root;
+	try {
+		root = ordered_json::parse(json);
+	} catch (const std::exception& e) {
+		spdlog::error("[rigProject] loadFromString parse failed: {}", e.what());
+		return false;
+	}
+	std::string pathHint;
+	if (root.contains("document") && root["document"].contains("path")) {
+		pathHint = root["document"].value("path", "");
+	}
+	return applyDocumentJson(ecs, root, pathHint);
 }
 
 } // namespace project

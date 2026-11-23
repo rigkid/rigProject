@@ -47,9 +47,24 @@ class ProjectSerializer {
 	bool save(MEcs& ecs, const std::string& path) const;
 	bool load(MEcs& ecs, const std::string& path);
 
+	/**
+	 * @brief Serialize the open document to a UTF-8 JSON string (no disk write).
+	 * @details Same payload as `save`. Does not clear dirty or rewrite `CProject::path`.
+	 */
+	bool saveToString(MEcs& ecs, std::string& out) const;
+
+	/**
+	 * @brief Replace the ECS from a UTF-8 JSON string previously written by `saveToString`.
+	 * @details Same rules as `load`. Leaves `CProject::path` as stored in the snapshot.
+	 */
+	bool loadFromString(MEcs& ecs, const std::string& json);
+
   private:
 	static bool shouldSkipEntity(entt::registry& reg, entt::entity e);
 	static bool isProjectMetadataEntity(entt::registry& reg, entt::entity e);
+
+	bool buildDocumentJson(MEcs& ecs, ordered_json& root, bool touchTimestamps) const;
+	bool applyDocumentJson(MEcs& ecs, const ordered_json& root, const std::string& pathHint);
 
 	ComponentSerializerRegistry m_registry;
 	RootExtensionWriter m_writeRootExtension;

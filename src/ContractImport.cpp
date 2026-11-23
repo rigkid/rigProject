@@ -637,6 +637,7 @@ ContractImportResult importContractJsonImpl(rigkit::MEcs& ecs, const std::string
 							  page.bleedLeft, page.bleedFloor, page.bleedCeiling);
 				readPageEdges(p, "slug", page.slugTop, page.slugRight, page.slugBottom,
 							  page.slugLeft, page.slugFloor, page.slugCeiling);
+				page.keepWithNext = p.value("keepWithNext", false);
 				ecs.addComponent(entity, page);
 			}
 

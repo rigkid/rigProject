@@ -58,6 +58,9 @@ bool serializePage(entt::registry& reg, entt::entity e, ordered_json& j) {
 					p.bleedCeiling);
 	writePageInsets(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft, p.slugFloor,
 					p.slugCeiling);
+	if (p.keepWithNext) {
+		j["keepWithNext"] = true;
+	}
 	return true;
 }
 
@@ -73,6 +76,7 @@ bool deserializePage(entt::registry& reg, entt::entity e, const ordered_json& j)
 				   p.bleedCeiling);
 	readPageInsets(j, "slug", p.slugTop, p.slugRight, p.slugBottom, p.slugLeft, p.slugFloor,
 				   p.slugCeiling);
+	p.keepWithNext = j.value("keepWithNext", false);
 	reg.emplace_or_replace<ecs::CPage>(e, p);
 	return true;
 }

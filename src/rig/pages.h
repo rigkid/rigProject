@@ -148,6 +148,15 @@ constexpr float kZoomMax = 8.f;
 constexpr float kFitPad = 0.90f;
 constexpr float kParkY = 1.0e7f;
 
+struct Runtime;
+
+/** Optional Spread layout: place N-leaf runs with 0 X-gap (rigLayout registers this). */
+using SpreadBoardLayoutFn = void (*)(Runtime& s);
+inline SpreadBoardLayoutFn& spreadBoardLayoutFn() {
+	static SpreadBoardLayoutFn fn = nullptr;
+	return fn;
+}
+
 struct Runtime {
 	rigkit::MEcs* ecs = nullptr;
 	entt::entity project{entt::null};
@@ -256,23 +265,24 @@ inline void applyLayout(Runtime& s) {
 	float y = 0.f;
 
 	if (s.layout == PageLayout::Spread) {
-		// Recto-first, left binding: page 0 alone on the right; then 1|2, 3|4, ...
+		if (auto* fn = spreadBoardLayoutFn()) {
+			fn(s);
+			return;
+		}
+		// Fallback: recto-first pairs, 0 X-gap within a run (butted leaves).
 		int i = 0;
 		const int n = static_cast<int>(s.pages.size());
 		while (i < n) {
 			const bool loneRecto = (i == 0);
-			const int leftIdx = loneRecto ? -1 : i;
-			const int rightIdx = loneRecto ? 0 : (i + 1 < n ? i + 1 : -1);
+			const int count = loneRecto ? 1 : std::min(2, n - i);
 			float rowH = 0.f;
-
-			auto place = [&](int idx, bool left) {
-				if (idx < 0) {
-					return;
-				}
+			float x = 0.f;
+			for (int k = 0; k < count; ++k) {
+				const int idx = loneRecto ? 0 : (i + k);
 				const auto e = s.pages[static_cast<size_t>(idx)];
 				if (!s.ecs->registry().valid(e) || !s.ecs->hasComponent<rigkit::ecs::CPage>(e) ||
 					!s.ecs->hasComponent<rigkit::ecs::CTransform>(e)) {
-					return;
+					continue;
 				}
 				const auto& page = s.ecs->getComponent<rigkit::ecs::CPage>(e);
 				auto& xf = s.ecs->getComponent<rigkit::ecs::CTransform>(e);
@@ -281,27 +291,13 @@ inline void applyLayout(Runtime& s) {
 				}
 				s.ecs->getComponent<rigkit::ecs::CLayer>(e).visible = true;
 				rowH = std::max(rowH, page.height);
-				if (loneRecto) {
-					xf.position.x = kPageGap * 0.5f;
-				} else if (left) {
-					xf.position.x = -page.width - kPageGap * 0.5f;
-				} else {
-					xf.position.x = kPageGap * 0.5f;
-				}
+				xf.position.x = x;
 				xf.position.y = y;
-			};
-
-			if (loneRecto) {
-				place(0, false);
-				i = 1;
-			} else {
-				place(leftIdx, true);
-				place(rightIdx, false);
-				i += 2;
+				x += page.width;
 			}
+			i += count;
 			y += rowH + kPageGap;
 		}
-		// Hide nothing in Spread - all pages stay visible in their pairs.
 		s.stackY = y;
 		return;
 	}
