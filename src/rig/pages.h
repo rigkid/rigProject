@@ -24,6 +24,7 @@
 #include "CLayer.h"
 #include "CPage.h"
 #include "CProject.h"
+#include "DocumentEnvelope.h"
 #include "CRectangle.h"
 #include "CRelationship.h"
 #include "CTransform.h"
@@ -126,7 +127,7 @@ void clearPages();
 /** @brief Forget board state after the app already destroyed the entities. */
 void resetPages();
 
-/** @brief Find or create the document `CProject` and bind it to the page board. */
+/** @brief Find the bound document envelope, or create one and bind it. */
 void ensureProject(rigkit::MEcs& ecs);
 
 /**
@@ -391,17 +392,20 @@ inline void markActiveFromView(Runtime& s) {
 }
 
 inline void ensureProject(Runtime& s, rigkit::MEcs& ecs) {
-	if (s.project != entt::null && ecs.registry().valid(s.project)) {
+	if (s.project != entt::null && ecs.registry().valid(s.project) &&
+		ecs.hasComponent<rigkit::ecs::CProject>(s.project)) {
 		return;
 	}
-	auto view = ecs.view<rigkit::ecs::CProject>();
-	for (auto e : view) {
-		s.project = e;
+	const entt::entity bound = rigkit::project::documentEntity(ecs.registry());
+	if (bound != entt::null && ecs.registry().valid(bound) &&
+		ecs.hasComponent<rigkit::ecs::CProject>(bound)) {
+		s.project = bound;
 		s.ownProject = false;
 		return;
 	}
 	s.project = ecs.createEntity("project");
 	ecs.addComponent<rigkit::ecs::CProject>(s.project, rigkit::ecs::CProject{});
+	rigkit::project::bindDocument(ecs.registry(), s.project);
 	s.ownProject = true;
 	own(s, s.project);
 }

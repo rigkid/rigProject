@@ -1,8 +1,8 @@
 #include "ProjectSerializer.h"
 
 #include "ecs/MEcs.h"
-#include "CProject.h"
 #include "CTransient.h"
+#include "DocumentEnvelope.h"
 #include "EntityIdRemap.h"
 
 #include <chrono>
@@ -101,7 +101,7 @@ void applyEnvelopeToProject(ecs::CProject& doc, const ordered_json& envelope) {
 } // namespace
 
 bool ProjectSerializer::isProjectMetadataEntity(entt::registry& reg, entt::entity e) {
-	return reg.all_of<ecs::CProject>(e);
+	return e == documentEntity(reg) && reg.all_of<ecs::CProject>(e);
 }
 
 bool ProjectSerializer::shouldSkipEntity(entt::registry& reg, entt::entity e) {
@@ -113,13 +113,9 @@ bool ProjectSerializer::buildDocumentJson(MEcs& ecs, ordered_json& root,
 										  bool touchTimestamps) const {
 	auto& reg = ecs.registry();
 
-	ecs::CProject* docPtr = nullptr;
-	for (auto entity : reg.view<ecs::CProject>()) {
-		docPtr = &reg.get<ecs::CProject>(entity);
-		break;
-	}
+	ecs::CProject* docPtr = documentProject(reg);
 	if (!docPtr) {
-		spdlog::error("[rigProject] save: no CProject entity");
+		spdlog::error("[rigProject] save: no document envelope (bindDocument)");
 		return false;
 	}
 
@@ -212,6 +208,7 @@ bool ProjectSerializer::applyDocumentJson(MEcs& ecs, const ordered_json& root,
 	// Registry ctx survives clear(); wipe staged layout/story refs before
 	// deserialize so a prior incomplete load cannot leak into this one.
 	m_registry.clearContractEntityStaging(ecs.registry());
+	bindDocument(ecs.registry(), entt::null);
 
 	auto docEntity = ecs.createEntity("project");
 	ecs::CProject doc;
@@ -221,6 +218,7 @@ bool ProjectSerializer::applyDocumentJson(MEcs& ecs, const ordered_json& root,
 	}
 	doc.dirty = false;
 	ecs.addComponent<ecs::CProject>(docEntity, doc);
+	bindDocument(ecs.registry(), docEntity);
 
 	EntityIdMap idMap;
 	bool projectFolded = false;
@@ -300,11 +298,9 @@ bool ProjectSerializer::save(MEcs& ecs, const std::string& path) const {
 		return false;
 	}
 
-	for (auto entity : ecs.registry().view<ecs::CProject>()) {
-		auto& doc = ecs.registry().get<ecs::CProject>(entity);
-		doc.path = path;
-		doc.dirty = false;
-		break;
+	if (ecs::CProject* doc = documentProject(ecs.registry())) {
+		doc->path = path;
+		doc->dirty = false;
 	}
 	spdlog::info("[rigProject] saved '{}'", path);
 	return true;

@@ -5,7 +5,7 @@
 #include "ecs/MEcs.h"
 #include "ecs/SystemRegistry.h"
 #include "CPage.h"
-#include "CProject.h"
+#include "DocumentEnvelope.h"
 #include "rig/pages.h"
 #include "rig/sketch.h"
 
@@ -87,10 +87,8 @@ void rigProject::setup() {
 		if (m_saveRequested) {
 			std::string path = normalizePath(m_pendingSavePath);
 			if (path.empty()) {
-				auto view = e.view<ecs::CProject>();
-				for (auto entity : view) {
-					path = normalizePath(view.get<ecs::CProject>(entity).path);
-					break;
+				if (const ecs::CProject* doc = project::documentProject(e.registry())) {
+					path = normalizePath(doc->path);
 				}
 			}
 			if (path.empty()) {

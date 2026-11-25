@@ -8,6 +8,7 @@
 #include "packs/rigComponent/src/rigComponent.h"
 #include "packs/rigProjectComponent/src/CPage.h"
 #include "packs/rigProjectComponent/src/CProject.h"
+#include "packs/rigProjectComponent/src/DocumentEnvelope.h"
 #include "packs/rigSystems/src/rigSystems.h"
 
 #include <algorithm>
@@ -165,6 +166,7 @@ void DocumentApp::buildScene() {
 	doc.defaultUnit = "px";
 	doc.dirty = true;
 	ecs->addComponent<rigkit::ecs::CProject>(docEntity, doc);
+	rigkit::project::bindDocument(ecs->registry(), docEntity);
 
 	m_root = rig::makeGroup({0.f, 0.f, 0.f}, "board-root");
 
@@ -203,10 +205,8 @@ void DocumentApp::applyActiveSelection() {
 	}
 
 	int active = 0;
-	auto docView = ecs->view<rigkit::ecs::CProject>();
-	for (auto entity : docView) {
-		active = docView.get<rigkit::ecs::CProject>(entity).activePageIndex;
-		break;
+	if (const auto* doc = rigkit::project::documentProject(ecs->registry())) {
+		active = doc->activePageIndex;
 	}
 
 	const char* names[] = {"Open", "Look", "Close"};

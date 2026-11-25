@@ -44,6 +44,7 @@ class ProjectSerializer {
 		m_readRootExtension = std::move(reader);
 	}
 
+	/** @brief Write @p ecs. The envelope is the entity from `bindDocument`. */
 	bool save(MEcs& ecs, const std::string& path) const;
 	bool load(MEcs& ecs, const std::string& path);
 
