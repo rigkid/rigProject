@@ -60,7 +60,7 @@ bool writeRigz(const std::string& destPath, const std::string& rigPath,
  * `fonts/<name>` (relative to `data/`). Files already under `data/` or `assets/` are
  * rewritten relative without a copy. Same source is copied once; name clashes get
  * `-N`. Missing files are left untouched. Refs rewrite only after every copy succeeds.
- * Documents and presets are not collected. Call before @ref writeRigz / `.rig` save.
+ * Documents and presets are not collected. Call before @ref rigkit::project::writeRigz / `.rig` save.
  * @return false (with @p error set) when @p packetRoot is empty or a copy fails.
  */
 bool collectLinkedAssets(MEcs& ecs, const std::string& packetRoot, std::string* error = nullptr);
